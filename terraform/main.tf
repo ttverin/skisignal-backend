@@ -81,8 +81,7 @@ resource "azurerm_linux_function_app" "func" {
 
   app_settings = {
     FUNCTIONS_WORKER_RUNTIME = "node"
-    APPLICATIONINSIGHTS_CONNECTION_STRING =
-      azurerm_application_insights.ai.connection_string
+    APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.ai.connection_string
   }
 
   tags = local.common_tags
