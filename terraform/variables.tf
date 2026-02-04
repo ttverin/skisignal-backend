@@ -11,13 +11,13 @@ variable "location" {
 }
 
 variable "environment" {
-  description = "Deployment environment (Dev, Staging, Prod)"
+  description = "Deployment environment (dev, test, prod)"
   type        = string
-  default     = "Dev"
+  default     = "dev"
 }
 
 variable "owner" {
   description = "Project owner"
   type        = string
-  default     = "you@example.com"
+  default     = "teemu.tverin@gmail.com"
 }
