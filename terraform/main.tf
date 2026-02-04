@@ -68,7 +68,7 @@ resource "azurerm_application_insights" "ai" {
   lifecycle {
     ignore_changes = [workspace_id]
   }
-  
+
 }
 
 # -----------------------
