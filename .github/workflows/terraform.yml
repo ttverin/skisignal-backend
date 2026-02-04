@@ -55,7 +55,6 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
