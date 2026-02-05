@@ -27,6 +27,7 @@ output "static_web_url" {
 output "custom_domain_verification_token" {
   value       = azurerm_static_web_app_custom_domain.ui.validation_token
   description = "Add this TXT record in Namecheap DNS: Host=asuid, Value=this token, TTL=300"
+  sensitive   = true
 }
 
 # Output the default hostname for www CNAME
