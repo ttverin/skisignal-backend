@@ -136,7 +136,7 @@ resource "azurerm_role_assignment" "ci_contributor" {
 # -----------------------
 # Static Web App (React UI)
 # -----------------------
-resource "azurerm_static_web_app" "ski_ui" {
+resource "azurerm_static_web_app" "ui" {
   name                = "${var.project_name}-${var.environment}-ui"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
