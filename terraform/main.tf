@@ -146,10 +146,10 @@ resource "azurerm_static_web_app" "ui" {
 }
 
 # -----------------------
-# Custom Domain for Namecheap
+# Custom Domain
 # -----------------------
 resource "azurerm_static_web_app_custom_domain" "ui_domain" {
-  domain_name           = "skisignal.com"                  # your custom domain
+  domain_name           = "skisignal.com"
   static_web_app_id     = azurerm_static_web_app.ui.id
-  validation_type       = "txt_token"
+  validation_type       = "dns-txt-token"
 }
