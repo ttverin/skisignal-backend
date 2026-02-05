@@ -13,10 +13,11 @@ module.exports = async function (context, req) {
       body: {
         resort,
         ...forecast,
-        ...scores
+        ...scores 
       }
     };
   } catch (err) {
     context.res = { status: 500, body: { error: err.message } };
   }
 };
+
