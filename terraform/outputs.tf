@@ -30,7 +30,7 @@ output "custom_domain_verification_token" {
 }
 
 # Output the default hostname for www CNAME
-output "static_web_app_default_hostname" {
+output "static_web_app_default_host_name" {
   value       = azurerm_static_web_app.ui.default_hostname
   description = "Use this CNAME for www.skisignal.com pointing to your Static Web App"
 }
