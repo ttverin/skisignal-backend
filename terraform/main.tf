@@ -132,3 +132,20 @@ resource "azurerm_role_assignment" "ci_contributor" {
   role_definition_name = "Contributor"
   principal_id         = azuread_service_principal.ci.object_id
 }
+
+# -----------------------
+# Static Web App (React UI)
+# -----------------------
+resource "azurerm_static_web_app" "ski_ui" {
+  name                = "${var.project_name}-${var.environment}-ui"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  sku_tier            = "Free"
+
+
+  identity {
+    type = "SystemAssigned"
+  }
+
+  tags = local.common_tags
+}
