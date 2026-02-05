@@ -18,3 +18,7 @@ output "subscription_id" {
   description = "Azure Subscription ID"
   value       = data.azurerm_client_config.current.subscription_id
 }
+
+output "static_web_url" {
+  value = azurerm_static_web_app.ui.default_host_name
+}
