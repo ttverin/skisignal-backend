@@ -144,3 +144,12 @@ resource "azurerm_static_web_app" "ui" {
 
   tags = local.common_tags
 }
+
+# -----------------------
+# Custom Domain for Namecheap
+# -----------------------
+resource "azurerm_static_web_app_custom_domain" "ui_domain" {
+  domain_name           = "skisignal.com"                  # your custom domain
+  static_web_app_id     = azurerm_static_web_app.ui.id
+  validation_type       = "txt_token"
+}
