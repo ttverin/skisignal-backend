@@ -144,3 +144,12 @@ resource "azurerm_static_web_app" "ui" {
 
   tags = local.common_tags
 }
+
+# -----------------------
+# Custom Domain
+# -----------------------
+resource "azurerm_static_web_app_custom_domain" "ui" {
+  domain_name           = "skisignal.com"
+  static_web_app_id     = azurerm_static_web_app.ui.id
+  validation_type       = "dns-txt-token"
+}
