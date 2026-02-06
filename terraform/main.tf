@@ -99,15 +99,18 @@ resource "azurerm_linux_function_app" "func" {
     application_stack {
       node_version = "18"
     }
+    cors {
+      allowed_origins = ["*"]
+      support_credentials = false
+    }
   }
 
   app_settings = {
     FUNCTIONS_WORKER_RUNTIME              = "node"
     APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.ai.connection_string
-    WEBSITE_CORS_ALLOWED_ORIGINS         = "*"
-    WEBSITE_CORS_SUPPORT_CREDENTIALS     = "false" 
   }
   tags = local.common_tags
+
 }
 
 # -----------------------
@@ -123,6 +126,7 @@ resource "azuread_service_principal" "ci" {
 
 resource "azuread_application_password" "ci" {
   application_object_id = azuread_application.ci.object_id
+  # old: application_id = azuread_application.ci.object_id
 }
 
 # -----------------------
