@@ -1,6 +1,20 @@
 import { useEffect, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+
+// Fix marker icons for Leaflet (works on Azure / production)
+import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
+import markerIcon from "leaflet/dist/images/marker-icon.png";
+import markerShadow from "leaflet/dist/images/marker-shadow.png";
+
+delete L.Icon.Default.prototype._getIconUrl;
+
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: markerIcon2x,
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow,
+});
 
 const API = "https://skisignal-dev-api.azurewebsites.net/api";
 
@@ -22,7 +36,6 @@ export default function App() {
   const [data, setData] = useState({ best: null, all: [] });
   const [loading, setLoading] = useState(false);
 
-  // Fetch best day + all resorts
   async function fetchData() {
     setLoading(true);
     try {
@@ -74,7 +87,9 @@ export default function App() {
           <h2 style={{ color: verdictColor(data.best.verdict) }}>
             {data.best.verdict}
           </h2>
-          <p>Snow: {data.best.snow} cm ({data.best.freshSnow} cm new)</p>
+          <p>
+            Snow: {data.best.snow} cm ({data.best.freshSnow} cm new)
+          </p>
           <p>Temp: {data.best.temp}°C</p>
           <p>Wind: {data.best.wind} km/h</p>
           <p>{data.best.dayOfWeek}</p>
@@ -93,7 +108,9 @@ export default function App() {
         {data.all.map(r => (
           <div key={r.resort} className="card">
             <h2>{r.resort}</h2>
-            <p>Snow: {r.snow} cm ({r.freshSnow} cm new)</p>
+            <p>
+              Snow: {r.snow} cm ({r.freshSnow} cm new)
+            </p>
             <p>Temp: {r.temp}°C</p>
             <p>Wind: {r.wind} km/h</p>
             <p>{r.dayOfWeek}</p>
@@ -109,7 +126,7 @@ export default function App() {
 
       {/* Map */}
       <h2 style={{ marginTop: 40 }}>📍 Map of Resorts</h2>
-      <div className="map-container" style={{ height: 500 }}>
+      <div style={{ width: "100%", height: "500px" }}>
         <MapContainer
           center={[46, 7]}
           zoom={4}
@@ -119,20 +136,22 @@ export default function App() {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution="&copy; OpenStreetMap contributors"
           />
-          {data.all.map(r =>
-            r.lat != null && r.lon != null ? (
-              <Marker key={r.resort} position={[r.lat, r.lon]}>
-                <Popup>
-                  <strong>{r.resort}</strong>
-                  <br />
-                  Snow: {r.snow} cm ({r.freshSnow} cm new)
-                  <br />
-                  Temp: {r.temp}°C
-                  <br />
-                  Verdict: {r.verdict}
-                </Popup>
-              </Marker>
-            ) : null
+          {data.all.map(
+            r =>
+              r.lat != null &&
+              r.lon != null && (
+                <Marker key={r.resort} position={[r.lat, r.lon]}>
+                  <Popup>
+                    <strong>{r.resort}</strong>
+                    <br />
+                    Snow: {r.snow} cm ({r.freshSnow} cm new)
+                    <br />
+                    Temp: {r.temp}°C
+                    <br />
+                    Verdict: {r.verdict}
+                  </Popup>
+                </Marker>
+              )
           )}
         </MapContainer>
       </div>
