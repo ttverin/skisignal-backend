@@ -126,7 +126,6 @@ resource "azuread_service_principal" "ci" {
 
 resource "azuread_application_password" "ci" {
   application_object_id = azuread_application.ci.object_id
-  # old: application_id = azuread_application.ci.object_id
 }
 
 # -----------------------
