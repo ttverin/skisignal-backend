@@ -19,6 +19,38 @@ function smoothArray(arr, window = 3) {
   return smoothed;
 }
 
+// Scoring function
+function scoreDay({ freshSnow, snowDepth, temp, wind, dayOfWeek }) {
+  let snowScore = Math.min(60, Math.round(snowDepth * 60)); // snowDepth in meters
+
+  // freshSnow bonus (meters)
+  if (freshSnow > 0.2) snowScore += 20;
+  else if (freshSnow > 0.1) snowScore += 10;
+
+  // Temperature effect
+  if (temp < -5) snowScore += 10;
+  else if (temp > 5) snowScore -= 10;
+
+  // Wind effect
+  if (wind > 60) snowScore -= 15;
+  else if (wind > 40) snowScore -= 5;
+
+  snowScore = Math.max(0, Math.min(100, snowScore));
+
+  // Crowd score
+  let crowdScore = 0;
+  if (["Saturday", "Sunday"].includes(dayOfWeek)) crowdScore += 30;
+  if (freshSnow > 0.1 || snowDepth > 0.5) crowdScore += 20;
+  crowdScore = Math.min(100, crowdScore);
+
+  // Verdict
+  let verdict = "SKIP";
+  if (snowScore >= 50 && wind < 60) verdict = "GO";
+  else if (snowScore >= 30) verdict = "MEH";
+
+  return { snowScore, crowdScore, verdict };
+}
+
 module.exports = async function getForecast(resort) {
   const key = cacheKey(resort);
   if (cache[key]) return cache[key];
@@ -26,7 +58,6 @@ module.exports = async function getForecast(resort) {
   const r = resorts[resort];
   if (!r) throw new Error("Unknown resort");
 
-  // Fetch both daily and hourly parameters
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${r.lat}&longitude=${r.lon}` +
     `&daily=snowfall_sum,temperature_2m_max,windspeed_10m_max` +
@@ -36,26 +67,21 @@ module.exports = async function getForecast(resort) {
   const resp = await fetch(url);
   const data = await resp.json();
 
-  // Fresh snowfall for tomorrow
+  // Fresh snowfall tomorrow (meters)
   const freshSnow = data.daily.snowfall_sum[1] ?? 0;
 
-  // Daily max temperature & wind for tomorrow
+  // Temperature & wind tomorrow
   const temp = data.daily.temperature_2m_max[1];
   const wind = data.daily.windspeed_10m_max[1];
   const date = data.daily.time[1];
 
-  // Compute snow depth
+  // Compute smoothed max snow depth tomorrow
   const hourlySnow = data.hourly.snow_depth ?? [];
   let snowDepth = 0;
 
   if (hourlySnow.length >= 48) {
-    // Use hours 24-47 as tomorrow's snow depth
     const tomorrowSnow = hourlySnow.slice(24, 48).map(v => v ?? 0);
-
-    // Smooth the values to remove spikes
     const smoothed = smoothArray(tomorrowSnow, 3);
-
-    // Take the maximum after smoothing
     snowDepth = Math.max(...smoothed);
   } else if (hourlySnow.length >= 24) {
     const lastTodaySnow = hourlySnow[23] ?? 0;
@@ -66,18 +92,28 @@ module.exports = async function getForecast(resort) {
     snowDepth = freshSnow;
   }
 
-  const dayOfWeek = new Date(date).toLocaleDateString("en-US", {
-    weekday: "long",
-  });
+  const dayOfWeek = new Date(date).toLocaleDateString("en-US", { weekday: "long" });
 
-  const result = {
+  // Scoring
+  const { snowScore, crowdScore, verdict } = scoreDay({
     freshSnow,
     snowDepth,
     temp,
     wind,
-    date,
     dayOfWeek,
-    source: "open-meteo",
+  });
+
+  // Return unified object
+  const result = {
+    resort,
+    snow: Math.round(snowDepth * 100),      // total snow in cm for UI
+    freshSnow: Math.round(freshSnow * 100), // fresh snow in cm
+    temp,
+    wind,
+    dayOfWeek,
+    snowScore,
+    crowdScore,
+    verdict,
   };
 
   cache[key] = result;
