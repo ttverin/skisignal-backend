@@ -21,17 +21,15 @@ module.exports = async function getForecast(resort) {
   const resp = await fetch(url);
   const data = await resp.json();
 
+  // daily snowfall for tomorrow
   const snow = data.daily.snowfall_sum[1] ?? 0;
   const temp = data.daily.temperature_2m_max[1];
   const wind = data.daily.windspeed_10m_max[1];
   const date = data.daily.time[1];
 
-  const dayOfWeek = new Date(date).toLocaleDateString("en-US", {
-    weekday: "long",
-  });
+  const dayOfWeek = new Date(date).toLocaleDateString("en-US", { weekday: "long" });
 
   const result = { snow, temp, wind, date, dayOfWeek, source: "open-meteo" };
   cache[key] = result;
-
   return result;
 };

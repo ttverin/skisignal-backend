@@ -1,6 +1,8 @@
 const resorts = require("../shared/resorts");
+const images = require("../shared/images");
 const getForecast = require("../shared/forecast");
 const scoreDay = require("../shared/scoring");
+const { calculateSlope } = require("../shared/scoring");
 
 module.exports = async function (context) {
   let results = [];
@@ -12,7 +14,9 @@ module.exports = async function (context) {
     results.push({
       resort,
       ...forecast,
-      ...scores
+      ...scores,
+      img: images[resort] || "",
+      slopeCondition: calculateSlope(forecast)
     });
   }
 
