@@ -21,7 +21,6 @@ const RESORTS = [
 export default function App() {
   const [data, setData] = useState({ best: null, all: [] });
   const [loading, setLoading] = useState(false);
-  const [sortBy, setSortBy] = useState("snowScore");
 
   // Fetch best day + all resorts
   async function fetchData() {
@@ -47,9 +46,6 @@ export default function App() {
   useEffect(() => {
     fetchData();
   }, []);
-
-  // Sort resorts
-  const sortedResorts = [...data.all].sort((a, b) => b[sortBy] - a[sortBy]);
 
   function verdictColor(v) {
     if (v === "GO") return "#22c55e";
@@ -78,37 +74,26 @@ export default function App() {
           <h2 style={{ color: verdictColor(data.best.verdict) }}>
             {data.best.verdict}
           </h2>
-          <p>Snow: {data.best.snow} cm</p>
+          <p>Snow: {data.best.snow} cm ({data.best.freshSnow} cm new)</p>
           <p>Temp: {data.best.temp}°C</p>
           <p>Wind: {data.best.wind} km/h</p>
           <p>{data.best.dayOfWeek}</p>
         </div>
       )}
 
-      {/* Controls */}
-      <div
-        style={{
-          display: "flex",
-          gap: 10,
-          flexWrap: "wrap",
-          marginBottom: 20,
-        }}
-      >
+      {/* Refresh Button */}
+      <div style={{ margin: "20px 0" }}>
         <button onClick={fetchData}>Refresh</button>
-        <select value={sortBy} onChange={e => setSortBy(e.target.value)}>
-          <option value="snowScore">Sort by Snow</option>
-          <option value="crowdScore">Sort by Crowd</option>
-        </select>
       </div>
 
       {loading && <p>Loading snow data...</p>}
 
       {/* Resorts Grid */}
       <div className="grid">
-        {sortedResorts.map(r => (
+        {data.all.map(r => (
           <div key={r.resort} className="card">
             <h2>{r.resort}</h2>
-            <p>Snow: {r.snow} cm</p>
+            <p>Snow: {r.snow} cm ({r.freshSnow} cm new)</p>
             <p>Temp: {r.temp}°C</p>
             <p>Wind: {r.wind} km/h</p>
             <p>{r.dayOfWeek}</p>
@@ -124,7 +109,7 @@ export default function App() {
 
       {/* Map */}
       <h2 style={{ marginTop: 40 }}>📍 Map of Resorts</h2>
-      <div className="map-container">
+      <div className="map-container" style={{ height: 500 }}>
         <MapContainer
           center={[46, 7]}
           zoom={4}
@@ -135,14 +120,16 @@ export default function App() {
             attribution="&copy; OpenStreetMap contributors"
           />
           {data.all.map(r =>
-            r.lat && r.lon ? (
+            r.lat != null && r.lon != null ? (
               <Marker key={r.resort} position={[r.lat, r.lon]}>
                 <Popup>
-                  {r.resort}
+                  <strong>{r.resort}</strong>
                   <br />
-                  Snow: {r.snow} cm
+                  Snow: {r.snow} cm ({r.freshSnow} cm new)
                   <br />
                   Temp: {r.temp}°C
+                  <br />
+                  Verdict: {r.verdict}
                 </Popup>
               </Marker>
             ) : null
