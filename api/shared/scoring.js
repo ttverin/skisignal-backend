@@ -1,22 +1,32 @@
-module.exports = function scoreDay({ snow, temp, wind, dayOfWeek }) {
-  let snowScore = 0;
+module.exports = function scoreDay({ freshSnow, snowDepth, temp, wind, dayOfWeek }) {
+  // Snow score based on snow depth (meters) + fresh snow
+  let snowScore = Math.min(60, Math.round(snowDepth * 60)); 
 
-  if (snow > 20) snowScore += 50;
-  else if (snow > 10) snowScore += 35;
-  else if (snow > 5) snowScore += 20;
-  else if (snow > 0) snowScore += 10;
+  if (freshSnow > 0.2) snowScore += 20;
+  else if (freshSnow > 0.1) snowScore += 10;
 
+  // Temperature effect
   if (temp < -5) snowScore += 10;
-  if (temp > 5) snowScore -= 15;
-  if (wind > 60) snowScore -= 20;
+  else if (temp > 5) snowScore -= 10;
 
+  // Wind effect
+  if (wind > 60) snowScore -= 15;
+  else if (wind > 40) snowScore -= 5;
+
+  // Cap snowScore
+  snowScore = Math.max(0, Math.min(100, snowScore));
+
+  // Crowd score: weekends + popular snow days
   let crowdScore = 0;
-  if (["Saturday", "Sunday"].includes(dayOfWeek)) crowdScore += 40;
-  if (snow > 15) crowdScore += 20;
+  if (["Saturday", "Sunday"].includes(dayOfWeek)) crowdScore += 30;
+  if (freshSnow > 0.1 || snowDepth > 0.5) crowdScore += 20; // popular snow
 
+  crowdScore = Math.min(100, crowdScore);
+
+  // Verdict
   let verdict = "SKIP";
-  if (snowScore > 60 && wind < 60) verdict = "GO";
-  else if (snowScore > 35) verdict = "MEH";
+  if (snowScore >= 50 && wind < 60) verdict = "GO";
+  else if (snowScore >= 30) verdict = "MEH";
 
   return { snowScore, crowdScore, verdict };
 };
