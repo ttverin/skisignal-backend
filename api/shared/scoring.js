@@ -1,3 +1,4 @@
+// simple snow and crowd scoring
 module.exports = function scoreDay({ snow, temp, wind, dayOfWeek }) {
   let snowScore = 0;
 
@@ -19,4 +20,13 @@ module.exports = function scoreDay({ snow, temp, wind, dayOfWeek }) {
   else if (snowScore > 35) verdict = "MEH";
 
   return { snowScore, crowdScore, verdict };
+};
+
+// slopeCondition: 0-100, higher = better slopes
+module.exports.calculateSlope = function({ snow, temp, wind }) {
+  let score = 0;
+  score += snow * 2;
+  score += Math.max(0, 5 - temp) * 5;
+  score -= wind * 0.5;
+  return Math.max(0, Math.min(100, Math.round(score)));
 };
