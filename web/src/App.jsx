@@ -3,136 +3,139 @@ import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-// Fix Leaflet default icon
-import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
-import markerIcon from "leaflet/dist/images/marker-icon.png";
-import markerShadow from "leaflet/dist/images/marker-shadow.png";
+const API = "https://skisignal-dev-api.azurewebsites.net/api/best-day";
 
+const resortCoords = {
+  Zermatt: [46.02, 7.75],
+  Verbier: [46.096, 7.228],
+  Laax: [46.836, 9.258],
+  Chamonix: [45.9237, 6.8694],
+  StAnton: [47.128, 10.263],
+  Cortina: [46.54, 12.135]
+};
+
+// Fix leaflet marker bug
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: markerIcon2x,
-  iconUrl: markerIcon,
-  shadowUrl: markerShadow,
+  iconRetinaUrl:
+    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  iconUrl:
+    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl:
+    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png"
 });
 
-// Fallback images for resorts
-const resortImages = {
-  Zermatt: "https://upload.wikimedia.org/wikipedia/commons/e/e0/Zermatt_Matterhorn_2020.jpg",
-  Verbier: "https://upload.wikimedia.org/wikipedia/commons/5/5f/Verbier_-_Ski_resort.jpg",
-  Chamonix: "https://upload.wikimedia.org/wikipedia/commons/f/fd/Mont_Blanc_Chamonix_2015.jpg",
-  StAnton: "https://upload.wikimedia.org/wikipedia/commons/4/49/St._Anton_Ski_Area.jpg",
-  Laax: "https://upload.wikimedia.org/wikipedia/commons/1/15/Laax-Snowpark_2020.jpg",
-  Cortina: "https://upload.wikimedia.org/wikipedia/commons/b/b7/Cortina_d%27Ampezzo_-_Dolomiti.jpg",
-  Niseko: "https://upload.wikimedia.org/wikipedia/commons/2/22/Niseko_Ski_Resort.jpg",
-  Aspen: "https://upload.wikimedia.org/wikipedia/commons/8/87/Aspen_Ski_Resort.jpg"
-};
-
-const verdictColor = (v) => (v === "GO" ? "#22c55e" : v === "MEH" ? "#eab308" : "#ef4444");
-const slopeColor = (s) => (s >= 60 ? "#22c55e" : s >= 35 ? "#eab308" : "#ef4444");
-
-// Simple slopeCondition calculation
-const calculateSlope = ({ snow, temp, wind }) => {
-  let score = 0;
-  score += snow * 2;              // more snow = better
-  score += Math.max(0, 5 - temp) * 5; // cold is good
-  score -= wind * 0.5;            // high wind reduces
-  return Math.max(0, Math.min(100, Math.round(score)));
-};
-
 export default function App() {
-  const [data, setData] = useState({ best: null, all: [] });
-  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState(null);
 
-  async function fetchScores() {
-    setLoading(true);
+  async function load() {
     try {
-      const res = await fetch("https://skisignal-dev-api.azurewebsites.net/api/best-day");
+      const res = await fetch(API);
       const json = await res.json();
-
-      // Add slopeCondition and fallback image
-      const allWithExtras = json.all.map(r => ({
-        ...r,
-        slopeCondition: calculateSlope(r),
-        img: resortImages[r.resort] || "https://upload.wikimedia.org/wikipedia/commons/e/e0/Zermatt_Matterhorn_2020.jpg"
-      }));
-
-      setData({
-        best: allWithExtras[0],
-        all: allWithExtras
-      });
+      setData(json);
     } catch (e) {
-      console.error("Error fetching data:", e);
+      console.error("API failed", e);
     }
-    setLoading(false);
   }
 
   useEffect(() => {
-    fetchScores();
+    load();
   }, []);
+
+  if (!data) {
+    return (
+      <div style={{ padding: 40, color: "white" }}>
+        Loading SkiSignal…
+      </div>
+    );
+  }
+
+  const best = data.best;
+  const resorts = data.all;
 
   return (
     <div style={styles.page}>
-      <h1 style={styles.title}>🎿 SkiSignal</h1>
+      <h1>🎿 SkiSignal</h1>
 
-      {data.best ? (
-        <div style={{ ...styles.bestCard, display: "flex", gap: 20, alignItems: "center" }}>
-          <img src={data.best.img} alt={data.best.resort} style={{ width: 200, borderRadius: 12 }} />
-          <div>
-            <h2>🏆 Best resort today</h2>
-            <h1>{data.best.resort}</h1>
-            <h2 style={{ color: verdictColor(data.best.verdict) }}>{data.best.verdict}</h2>
-            <p>Total snow: {Math.round(data.best.snow)} cm</p>
-            <p>Temp: {data.best.temp.toFixed(1)}°C</p>
-            <p>Wind: {data.best.wind.toFixed(1)} km/h</p>
-            <p>Forecast for {data.best.dayOfWeek}, {data.best.date}</p>
-            <p>Slope condition: {data.best.slopeCondition}%</p>
-          </div>
+      {/* BEST RESORT */}
+      {best && (
+        <div style={styles.best}>
+          <h2>🏆 Best resort today: {best.resort}</h2>
+          <p>Snow: {best.snow ?? 0} cm</p>
+          <p>Temp: {best.temp}°C</p>
+          <p>Wind: {best.wind} km/h</p>
+          <p>Date: {best.date}</p>
         </div>
-      ) : (
-        <p>Loading resort data...</p>
       )}
 
-      <button onClick={fetchScores} style={styles.button}>Refresh</button>
-      {loading && <p>Loading snow data...</p>}
+      {/* MAP */}
+      <div style={{ height: 400, marginBottom: 30 }}>
+        <MapContainer
+          center={[46.8, 8.3]}
+          zoom={6}
+          style={{ height: "100%", width: "100%" }}
+        >
+          <TileLayer
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
 
+          {resorts.map(r => {
+            const coords = resortCoords[r.resort];
+            if (!coords) return null;
+
+            return (
+              <Marker key={r.resort} position={coords}>
+                <Popup>
+                  <b>{r.resort}</b>
+                  <br />
+                  Snow: {r.snow ?? 0} cm
+                  <br />
+                  Temp: {r.temp}°C
+                </Popup>
+              </Marker>
+            );
+          })}
+        </MapContainer>
+      </div>
+
+      {/* CARDS */}
       <div style={styles.grid}>
-        {data.all.map(r => (
+        {resorts.map(r => (
           <div key={r.resort} style={styles.card}>
-            <h2>{r.resort}</h2>
-            <p>Total snow: {Math.round(r.snow)} cm</p>
-            <p>Temp: {r.temp.toFixed(1)}°C</p>
-            <p>Wind: {r.wind.toFixed(1)} km/h</p>
-            <div style={{ ...styles.verdict, background: slopeColor(r.slopeCondition) }}>Slope: {r.slopeCondition}%</div>
-            <div style={{ ...styles.verdict, background: verdictColor(r.verdict) }}>Verdict: {r.verdict}</div>
+            <h3>{r.resort}</h3>
+            <p>Snow: {r.snow ?? 0} cm</p>
+            <p>Temp: {r.temp}°C</p>
+            <p>Wind: {r.wind}</p>
+            <p>Score: {r.snowScore}</p>
+            <p>Verdict: {r.verdict}</p>
           </div>
         ))}
       </div>
-
-      <h2 style={{ marginTop: 40 }}>Map of resorts</h2>
-      <MapContainer style={{ height: 500, width: "100%" }} center={[46.8, 9.8]} zoom={6} scrollWheelZoom={false}>
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
-        {data.all.map(r => (
-          <Marker key={r.resort} position={[r.lat, r.lon]}>
-            <Popup>
-              <b>{r.resort}</b><br />
-              Total snow: {Math.round(r.snow)} cm<br />
-              Temp: {r.temp.toFixed(1)}°C<br />
-              Wind: {r.wind.toFixed(1)} km/h<br />
-              Slope condition: {r.slopeCondition}%
-            </Popup>
-          </Marker>
-        ))}
-      </MapContainer>
     </div>
   );
 }
 
 const styles = {
-  page: { fontFamily: "sans-serif", padding: 30, background: "#0f172a", color: "white", minHeight: "100vh" },
-  title: { fontSize: 42, marginBottom: 20 },
-  bestCard: { background: "#1e293b", padding: 20, borderRadius: 12, marginBottom: 30 },
-  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 16, marginTop: 20 },
-  card: { background: "#1e293b", padding: 16, borderRadius: 12 },
-  verdict: { padding: "6px 10px", borderRadius: 8, display: "inline-block", marginTop: 6 },
-  button: { marginBottom: 20, padding: "10px 16px", borderRadius: 8, border: "none", background: "#38bdf8", cursor: "pointer" },
+  page: {
+    padding: 30,
+    background: "#0f172a",
+    color: "white",
+    minHeight: "100vh"
+  },
+  best: {
+    background: "#1e293b",
+    padding: 20,
+    borderRadius: 12,
+    marginBottom: 20
+  },
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+    gap: 16
+  },
+  card: {
+    background: "#1e293b",
+    padding: 16,
+    borderRadius: 12
+  }
 };
