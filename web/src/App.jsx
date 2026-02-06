@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
-import { LineChart, Line, XAxis, YAxis, Tooltip } from "recharts";
 import "leaflet/dist/leaflet.css";
 
-// Resorts with coordinates
+const API = "https://skisignal-dev-api.azurewebsites.net/api";
+
+// Coordinates for resorts
 const RESORTS = [
   { name: "Zermatt", lat: 46.0207, lon: 7.7491 },
   { name: "Verbier", lat: 46.096, lon: 7.228 },
@@ -17,64 +18,38 @@ const RESORTS = [
   { name: "Åre", lat: 63.399, lon: 13.081 },
 ];
 
-const API = "https://skisignal-dev-api.azurewebsites.net/api";
-
 export default function App() {
-  const [data, setData] = useState({});
+  const [data, setData] = useState({ best: null, all: [] });
   const [loading, setLoading] = useState(false);
-  const [best, setBest] = useState(null);
   const [sortBy, setSortBy] = useState("snowScore");
-  const [favorites, setFavorites] = useState([]);
 
-  // Fetch scores for all resorts
-  async function fetchScores() {
+  // Fetch best day + all resorts
+  async function fetchData() {
     setLoading(true);
-
-    const results = await Promise.all(
-      RESORTS.map(async (r) => {
-        try {
-          const res = await fetch(`${API}/score-day?resort=${encodeURIComponent(r.name)}`);
-          const dayData = await res.json();
-
-          // Mock weekly snow data
-          const weekly = Array.from({ length: 7 }).map((_, i) => ({
-            day: `Day ${i + 1}`,
-            snow: Math.floor(Math.random() * 30),
-          }));
-
-          return { ...r, ...dayData, weekly };
-        } catch {
-          return { ...r, error: true };
-        }
-      })
-    );
-
-    const obj = Object.fromEntries(results.map(r => [r.name, r]));
-    setData(obj);
-    setLoading(false);
-  }
-
-  // Fetch best resort today
-  async function fetchBest() {
     try {
       const res = await fetch(`${API}/best-day`);
       const json = await res.json();
-      setBest(json);
-    } catch {
-      setBest(null);
+
+      // Merge lat/lon for map
+      const mergedAll = json.all.map(r => {
+        const coord = RESORTS.find(res => res.name === r.resort);
+        return { ...r, lat: coord?.lat, lon: coord?.lon };
+      });
+
+      setData({ best: json.best, all: mergedAll });
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
   }
 
   useEffect(() => {
-    fetchScores();
-    fetchBest();
+    fetchData();
   }, []);
 
-  // Sorting resorts
-  const sortedResorts = RESORTS
-    .map(r => data[r.name])
-    .filter(d => d && !d.error)
-    .sort((a, b) => b[sortBy] - a[sortBy]);
+  // Sort resorts
+  const sortedResorts = [...data.all].sort((a, b) => b[sortBy] - a[sortBy]);
 
   function verdictColor(v) {
     if (v === "GO") return "#22c55e";
@@ -82,39 +57,45 @@ export default function App() {
     return "#ef4444";
   }
 
-  function toggleFavorite(resort) {
-    setFavorites(prev =>
-      prev.includes(resort) ? prev.filter(f => f !== resort) : [...prev, resort]
-    );
-  }
-
   return (
-    <div style={styles.page}>
-      <h1 style={styles.title}>🎿 SkiSignal v3</h1>
+    <div
+      style={{
+        fontFamily: "sans-serif",
+        padding: 30,
+        minHeight: "100vh",
+        width: "100%",
+        background: "#0f172a",
+        color: "white",
+      }}
+    >
+      <h1 style={{ fontSize: 42 }}>🎿 SkiSignal</h1>
 
-      {/* Best Resort Today */}
-      {best && (
-        <div style={styles.bestCard}>
+      {/* Best Resort */}
+      {data.best && (
+        <div className="bestCard">
           <h2>🏆 Best resort today</h2>
-          <h1>{best.resort}</h1>
-          <h2 style={{ color: verdictColor(best.verdict) }}>{best.verdict}</h2>
-          <p>Snow: {best.snow} cm</p>
+          <h1>{data.best.resort}</h1>
+          <h2 style={{ color: verdictColor(data.best.verdict) }}>
+            {data.best.verdict}
+          </h2>
+          <p>Snow: {data.best.snow} cm</p>
+          <p>Temp: {data.best.temp}°C</p>
+          <p>Wind: {data.best.wind} km/h</p>
+          <p>{data.best.dayOfWeek}</p>
         </div>
       )}
 
       {/* Controls */}
-      <div style={{ marginBottom: 20, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-        <button
-          onClick={() => { fetchScores(); fetchBest(); }}
-          style={styles.button}
-        >
-          Refresh
-        </button>
-        <select
-          onChange={e => setSortBy(e.target.value)}
-          value={sortBy}
-          style={styles.select}
-        >
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          flexWrap: "wrap",
+          marginBottom: 20,
+        }}
+      >
+        <button onClick={fetchData}>Refresh</button>
+        <select value={sortBy} onChange={e => setSortBy(e.target.value)}>
           <option value="snowScore">Sort by Snow</option>
           <option value="crowdScore">Sort by Crowd</option>
         </select>
@@ -122,112 +103,52 @@ export default function App() {
 
       {loading && <p>Loading snow data...</p>}
 
-      {/* Resort Cards Grid */}
-      <div style={styles.grid}>
-        {sortedResorts.map(d => (
-          <div key={d.name} style={styles.card}>
-            <h2 style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              {d.name}
-              <span style={{ cursor: "pointer" }} onClick={() => toggleFavorite(d.name)}>
-                {favorites.includes(d.name) ? "⭐" : "☆"}
-              </span>
-            </h2>
-
-            {d.error ? (
-              <p>Error fetching data</p>
-            ) : (
-              <>
-                <p>Snow: {d.snow} cm</p>
-                <p>Temp: {d.temp}°C</p>
-                <p>Wind: {d.wind} km/h</p>
-                <p>{d.dayOfWeek}</p>
-
-                <div style={{ ...styles.verdict, background: verdictColor(d.verdict) }}>
-                  {d.verdict}
-                </div>
-
-                <p>Snow Score: {d.snowScore}</p>
-                <p>Crowd Score: {d.crowdScore}</p>
-
-                {/* Weekly Snow Chart */}
-                {d.weekly && (
-                  <LineChart width={200} height={80} data={d.weekly}>
-                    <Line type="monotone" dataKey="snow" stroke="#38bdf8" />
-                    <XAxis dataKey="day" />
-                    <YAxis />
-                    <Tooltip />
-                  </LineChart>
-                )}
-              </>
-            )}
+      {/* Resorts Grid */}
+      <div className="grid">
+        {sortedResorts.map(r => (
+          <div key={r.resort} className="card">
+            <h2>{r.resort}</h2>
+            <p>Snow: {r.snow} cm</p>
+            <p>Temp: {r.temp}°C</p>
+            <p>Wind: {r.wind} km/h</p>
+            <p>{r.dayOfWeek}</p>
+            <div
+              className="verdict"
+              style={{ background: verdictColor(r.verdict) }}
+            >
+              {r.verdict}
+            </div>
           </div>
         ))}
       </div>
 
       {/* Map */}
       <h2 style={{ marginTop: 40 }}>📍 Map of Resorts</h2>
-      <div style={{ width: "100%", height: 500 }}>
+      <div className="map-container">
         <MapContainer
           center={[46, 7]}
           zoom={4}
-          style={{ height: "100%", width: "100%" }}
+          style={{ width: "100%", height: "100%" }}
         >
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution="&copy; OpenStreetMap contributors"
           />
-          {RESORTS.map(r => (
-            <Marker key={r.name} position={[r.lat, r.lon]}>
-              <Popup>
-                {r.name}<br />
-                Snow: {data[r.name]?.snow ?? "?"} cm<br />
-                Temp: {data[r.name]?.temp ?? "?"}°C
-              </Popup>
-            </Marker>
-          ))}
+          {data.all.map(r =>
+            r.lat && r.lon ? (
+              <Marker key={r.resort} position={[r.lat, r.lon]}>
+                <Popup>
+                  {r.resort}
+                  <br />
+                  Snow: {r.snow} cm
+                  <br />
+                  Temp: {r.temp}°C
+                </Popup>
+              </Marker>
+            ) : null
+          )}
         </MapContainer>
       </div>
     </div>
   );
 }
-
-const styles = {
-  page: {
-    fontFamily: "sans-serif",
-    padding: 30,
-    background: "#0f172a",
-    color: "white",
-    minHeight: "100vh",
-    width: "100%",  // important
-  },
-  title: { fontSize: 42, marginBottom: 20 },
-  bestCard: {
-    background: "#1e293b",
-    padding: 20,
-    borderRadius: 12,
-    marginBottom: 30,
-    width: "100%",
-  },
-  button: {
-    padding: "10px 16px",
-    borderRadius: 8,
-    border: "none",
-    background: "#38bdf8",
-    cursor: "pointer",
-  },
-  select: { padding: "8px 12px", borderRadius: 6 },
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-    gap: 16,
-    width: "100%",
-  },
-  card: {
-    background: "#1e293b",
-    padding: 16,
-    borderRadius: 12,
-    width: "100%",
-    boxSizing: "border-box",
-  },
-  verdict: { padding: "6px 10px", borderRadius: 8, display: "inline-block", marginTop: 6 },
-};
