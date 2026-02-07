@@ -99,14 +99,18 @@ resource "azurerm_linux_function_app" "func" {
     application_stack {
       node_version = "18"
     }
+    cors {
+      allowed_origins = ["*"]
+      support_credentials = false
+    }
   }
 
   app_settings = {
     FUNCTIONS_WORKER_RUNTIME              = "node"
     APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.ai.connection_string
   }
-
   tags = local.common_tags
+
 }
 
 # -----------------------
@@ -131,4 +135,25 @@ resource "azurerm_role_assignment" "ci_contributor" {
   scope                = azurerm_resource_group.rg.id
   role_definition_name = "Contributor"
   principal_id         = azuread_service_principal.ci.object_id
+}
+
+# -----------------------
+# Static Web App (React UI)
+# -----------------------
+resource "azurerm_static_web_app" "ui" {
+  name                = "${var.project_name}-${var.environment}-ui"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  sku_tier            = "Free"
+
+  tags = local.common_tags
+}
+
+# -----------------------
+# Custom Domain
+# -----------------------
+resource "azurerm_static_web_app_custom_domain" "ui" {
+  domain_name           = "skisignal.com"
+  static_web_app_id     = azurerm_static_web_app.ui.id
+  validation_type       = "dns-txt-token"
 }
