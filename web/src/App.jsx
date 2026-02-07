@@ -4,9 +4,11 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 const API = "https://skisignal-dev-api.azurewebsites.net/api";
-const PAGE_SIZE = 6;
+const PAGE_SIZE = 4;
 
+// ------------------
 // Resort coordinates
+// ------------------
 const RESORTS = [
   { name: "Zermatt", lat: 46.0207, lon: 7.7491 },
   { name: "Verbier", lat: 46.096, lon: 7.228 },
@@ -34,14 +36,18 @@ const RESORTS = [
   { name: "Obergurgl", lat: 46.87, lon: 11.011 }
 ];
 
+// ------------------
 // Verdict color
+// ------------------
 function verdictColor(v) {
   if (v === "GO") return "#22c55e";
   if (v === "MEH") return "#eab308";
   return "#ef4444";
 }
 
-// Colored map marker
+// ------------------
+// Map marker icon
+// ------------------
 function markerIcon(color) {
   return new L.DivIcon({
     html: `<div style="
@@ -54,27 +60,39 @@ function markerIcon(color) {
   });
 }
 
+// ------------------
+// Main App
+// ------------------
 export default function App() {
   const [data, setData] = useState({ bestToday: null, bestTomorrow: null, all: [] });
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [loading, setLoading] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    function handleResize() {
+      setIsMobile(window.innerWidth <= 768);
+    }
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   async function fetchData() {
     setLoading(true);
     try {
       const res = await fetch(`${API}/best-day`);
       const json = await res.json();
-
       const merged = json.all.map(r => {
         const coord = RESORTS.find(x => x.name === r.resort);
         return { ...r, lat: coord?.lat, lon: coord?.lon };
       });
-
       setData({ ...json, all: merged });
-    } catch (e) {
-      console.error(e);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   useEffect(() => { fetchData(); }, []);
@@ -82,84 +100,88 @@ export default function App() {
   const visibleResorts = data.all.slice(0, visibleCount);
   const hasMore = visibleCount < data.all.length;
 
+  const winnerNames = [];
+  if (data.bestToday) winnerNames.push(data.bestToday.resort);
+  if (data.bestTomorrow && !winnerNames.includes(data.bestTomorrow.resort))
+    winnerNames.push(data.bestTomorrow.resort);
+
   return (
     <div style={styles.page}>
       <h1 style={styles.title}>🎿 SkiSignal</h1>
 
-      {/* BEST TODAY/TOMORROW */}
+      {/* BEST CARDS */}
       <div style={styles.bestWrap}>
-        {data.bestToday && <BestCard title="Best Today" d={data.bestToday} />}
-        {data.bestTomorrow && <BestCard title="Best Tomorrow" d={data.bestTomorrow} />}
+        {data.bestToday && <BestCard title="Best Today" d={data.bestToday} isWinner={winnerNames.includes(data.bestToday.resort)} />}
+        {data.bestTomorrow && <BestCard title="Best Tomorrow" d={data.bestTomorrow} isWinner={winnerNames.includes(data.bestTomorrow.resort)} />}
       </div>
+
+      {/* Mobile map */}
+      {isMobile && <div style={{ marginBottom: 20, height: 400 }}><MapComponent data={data.all} /></div>}
 
       <button style={styles.refresh} onClick={fetchData}>Refresh</button>
       {loading && <p>Loading snow…</p>}
 
-      {/* MAIN LAYOUT */}
-      <div style={styles.mainLayout}>
-        {/* CARDS */}
-        <div style={styles.cardsColumn}>
+      {/* Main layout */}
+      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 20, alignItems: "flex-start" }}>
+        {/* Resort Cards */}
+        <div style={{ flex: 1 }}>
           <div style={styles.grid}>
-            {visibleResorts.map(r => <ResortCard key={r.resort} r={r} />)}
+            {visibleResorts.map(r => <ResortCard key={r.resort} r={r} isWinner={winnerNames.includes(r.resort)} />)}
           </div>
-
-          {hasMore && (
-            <button style={styles.loadMore} onClick={() => setVisibleCount(v => v + PAGE_SIZE)}>
-              Load more resorts
-            </button>
-          )}
+          {hasMore && <button style={styles.loadMore} onClick={() => setVisibleCount(v => v + PAGE_SIZE)}>Load more resorts</button>}
         </div>
 
-        {/* MAP */}
-        <div style={styles.mapColumn}>
-          <MapContainer center={[46.8, 8.2]} zoom={6} style={{ height: "100%", width: "100%" }}>
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-            {data.all.map(r => r.lat && r.lon && (
-              <Marker key={r.resort} position={[r.lat, r.lon]} icon={markerIcon(verdictColor(r.today.verdict))}>
-                <Popup>
-                  <strong>{r.resort}</strong><br />
-                  Today: {r.today.verdict} | Snow: {r.today.snow} cm | Wind: {r.today.wind} km/h<br />
-                  Tomorrow: {r.tomorrow.verdict} | Snow: {r.tomorrow.snow} cm | Wind: {r.tomorrow.wind} km/h
-                </Popup>
-              </Marker>
-            ))}
-          </MapContainer>
-        </div>
+        {/* Desktop map */}
+        {!isMobile && <div style={{ width: "45%", height: "80vh", position: "sticky", top: 20 }}><MapComponent data={data.all} /></div>}
       </div>
     </div>
+  );
+}
+
+// ------------------
+// Map component
+// ------------------
+function MapComponent({ data }) {
+  return (
+    <MapContainer center={[46.8, 8.2]} zoom={6} style={{ height: "100%", width: "100%" }}>
+      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+      {data.map(r => r.lat && r.lon && (
+        <Marker key={r.resort} position={[r.lat, r.lon]} icon={markerIcon(verdictColor(r.today.verdict))}>
+          <Popup>
+            <strong>{r.resort}</strong><br />
+            Today: {r.today.verdict} ({r.today.snow} cm)<br />
+            Tomorrow: {r.tomorrow.verdict} ({r.tomorrow.snow} cm)<br />
+            Wind Today: {r.today.wind} km/h
+          </Popup>
+        </Marker>
+      ))}
+    </MapContainer>
   );
 }
 
 // ------------------
 // Components
 // ------------------
-
-function BestCard({ title, d }) {
+function BestCard({ title, d, isWinner }) {
   return (
-    <div style={{ 
-      ...styles.bestCard, 
-      border: `2px solid ${verdictColor(d.verdict)}`, 
-      boxShadow: `0 0 12px ${verdictColor(d.verdict)}50` 
-    }}>
-      <h3 style={{ marginBottom: 8 }}>🏆 {title}</h3>
-      <h2 style={{ margin: 0, wordBreak: "break-word" }}>{d.resort}</h2>
-
-      <div style={{ ...styles.bigVerdict, background: verdictColor(d.verdict) }}>
-        {d.verdict}
-      </div>
-
-      <p style={{ margin: "8px 0 0 0" }}>Day: {d.dayOfWeek}</p>
-      <p style={{ margin: "2px 0" }}>Snow: {d.snow} cm (New: {d.freshSnow} cm)</p>
-      <p style={{ margin: "2px 0" }}>Temp: {d.temp}°C</p>
-      <p style={{ margin: "2px 0" }}>Wind: {d.wind} km/h</p>
+    <div style={{ ...styles.bestCard, border: isWinner ? "3px solid gold" : "none", position: "relative" }}>
+      {isWinner && <span style={{ position: "absolute", top: 8, right: 8, fontSize: 24 }}>🏆</span>}
+      <h3>{title}</h3>
+      <h1 style={{ wordBreak: "break-word", overflowWrap: "break-word", fontSize: "1.5rem", margin: "0.5rem 0" }}>{d.resort}</h1>
+      <div style={{ ...styles.bigVerdict, background: verdictColor(d.verdict) }}>{d.verdict}</div>
+      <p>Snow: {d.snow} cm ({d.freshSnow} cm new)</p>
+      <p>Temp: {d.temp}°C</p>
+      <p>Wind: {d.wind} km/h</p>
+      <p>{d.dayOfWeek}</p>
     </div>
   );
 }
 
-function ResortCard({ r }) {
+function ResortCard({ r, isWinner }) {
   return (
-    <div style={styles.card}>
-      <h2 style={{ margin: 0, wordBreak: "break-word" }}>{r.resort}</h2>
+    <div style={{ ...styles.card, border: isWinner ? "2px solid gold" : "none", position: "relative" }}>
+      {isWinner && <span style={{ position: "absolute", top: 8, right: 8 }}>🏆</span>}
+      <h2 style={{ wordBreak: "break-word", overflowWrap: "break-word" }}>{r.resort}</h2>
       <div style={styles.dayRow}>
         <DayBox title="Today" d={r.today} />
         <DayBox title="Tomorrow" d={r.tomorrow} />
@@ -171,15 +193,13 @@ function ResortCard({ r }) {
 function DayBox({ title, d }) {
   return (
     <div style={styles.dayBox}>
-      <h4 style={{ margin: 0 }}>{title}</h4>
-      <p style={{ margin: "2px 0" }}>{d.dayOfWeek}</p>
-      <p style={{ margin: "2px 0" }}>Snow: {d.snow} cm</p>
-      <p style={{ margin: "2px 0" }}>New: {d.freshSnow} cm</p>
-      <p style={{ margin: "2px 0" }}>Temp: {d.temp}°C</p>
-      <p style={{ margin: "2px 0" }}>Wind: {d.wind} km/h</p>
-      <div style={{ ...styles.verdict, background: verdictColor(d.verdict) }}>
-        {d.verdict}
-      </div>
+      <h4>{title}</h4>
+      <p>{d.dayOfWeek}</p>
+      <p>Snow: {d.snow} cm</p>
+      <p>New: {d.freshSnow} cm</p>
+      <p>Temp: {d.temp}°C</p>
+      <p>Wind: {d.wind} km/h</p>
+      <div style={{ ...styles.verdict, background: verdictColor(d.verdict) }}>{d.verdict}</div>
     </div>
   );
 }
@@ -187,21 +207,20 @@ function DayBox({ title, d }) {
 // ------------------
 // Styles
 // ------------------
-
 const styles = {
   page: { padding: 20, background: "#0f172a", color: "white", minHeight: "100vh", fontFamily: "sans-serif" },
   title: { fontSize: 42, marginBottom: 10 },
   bestWrap: { display: "flex", gap: 20, marginBottom: 20, flexWrap: "wrap" },
-  bestCard: { background: "#1e293b", padding: 20, borderRadius: 16, width: 240, minWidth: 0 },
+  bestCard: { background: "#1e293b", padding: 20, borderRadius: 16, width: 240, overflow: "hidden" },
   bigVerdict: { padding: 10, borderRadius: 12, fontWeight: "bold", marginTop: 10, textAlign: "center" },
   refresh: { marginBottom: 20, padding: 10, borderRadius: 10, background: "#334155", color: "white" },
   mainLayout: { display: "flex", gap: 20, alignItems: "flex-start" },
   cardsColumn: { flex: 1 },
   mapColumn: { width: "45%", height: "80vh", position: "sticky", top: 20 },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(250px,1fr))", gap: 16 },
-  card: { background: "#1e293b", padding: 16, borderRadius: 16, minWidth: 0 },
+  card: { background: "#1e293b", padding: 16, borderRadius: 16 },
   dayRow: { display: "flex", gap: 10 },
-  dayBox: { flex: 1, background: "#0f172a", padding: 10, borderRadius: 12, minWidth: 0 },
+  dayBox: { flex: 1, background: "#0f172a", padding: 10, borderRadius: 12 },
   verdict: { marginTop: 8, padding: 6, borderRadius: 8, textAlign: "center", fontWeight: "bold" },
   loadMore: { marginTop: 20, padding: 12, borderRadius: 10, background: "#334155", color: "white", width: "100%" }
 };
