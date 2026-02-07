@@ -4,7 +4,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 const API = "https://skisignal-dev-api.azurewebsites.net/api";
-const PAGE_SIZE = 4;
+const PAGE_SIZE = 6;
 
 // ------------------
 // Resort coordinates
@@ -37,12 +37,18 @@ const RESORTS = [
 ];
 
 // ------------------
-// Verdict color
+// Verdict color & label
 // ------------------
 function verdictColor(v) {
   if (v === "GO") return "#22c55e";
   if (v === "MEH") return "#eab308";
   return "#ef4444";
+}
+
+function verdictLabel(v) {
+  if (v === "GO") return "GO";
+  if (v === "MEH") return "OK";
+  return "NO";
 }
 
 // ------------------
@@ -69,6 +75,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
+  // Responsive check
   useEffect(() => {
     function handleResize() {
       setIsMobile(window.innerWidth <= 768);
@@ -78,6 +85,7 @@ export default function App() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  // Fetch data
   async function fetchData() {
     setLoading(true);
     try {
@@ -95,7 +103,9 @@ export default function App() {
     }
   }
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   const visibleResorts = data.all.slice(0, visibleCount);
   const hasMore = visibleCount < data.all.length;
@@ -109,21 +119,17 @@ export default function App() {
     <div style={styles.page}>
       <h1 style={styles.title}>🎿 SkiSignal</h1>
 
-      {/* BEST CARDS */}
+      {/* Best Cards */}
       <div style={styles.bestWrap}>
         {data.bestToday && <BestCard title="Best Today" d={data.bestToday} isWinner={winnerNames.includes(data.bestToday.resort)} />}
         {data.bestTomorrow && <BestCard title="Best Tomorrow" d={data.bestTomorrow} isWinner={winnerNames.includes(data.bestTomorrow.resort)} />}
       </div>
 
-      {/* Mobile map */}
-      {isMobile && <div style={{ marginBottom: 20, height: 400 }}><MapComponent data={data.all} /></div>}
-
       <button style={styles.refresh} onClick={fetchData}>Refresh</button>
       {loading && <p>Loading snow…</p>}
 
-      {/* Main layout */}
-      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 20, alignItems: "flex-start" }}>
-        {/* Resort Cards */}
+      {/* Layout */}
+      <div style={{ display: isMobile ? "block" : "flex", gap: 20, alignItems: "flex-start" }}>
         <div style={{ flex: 1 }}>
           <div style={styles.grid}>
             {visibleResorts.map(r => <ResortCard key={r.resort} r={r} isWinner={winnerNames.includes(r.resort)} />)}
@@ -131,15 +137,24 @@ export default function App() {
           {hasMore && <button style={styles.loadMore} onClick={() => setVisibleCount(v => v + PAGE_SIZE)}>Load more resorts</button>}
         </div>
 
-        {/* Desktop map */}
-        {!isMobile && <div style={{ width: "45%", height: "80vh", position: "sticky", top: 20 }}><MapComponent data={data.all} /></div>}
+        {!isMobile && (
+          <div style={{ width: "45%", height: "80vh", position: "sticky", top: 20 }}>
+            <MapComponent data={data.all} />
+          </div>
+        )}
       </div>
+
+      {isMobile && (
+        <div style={{ marginTop: 20, height: 400 }}>
+          <MapComponent data={data.all} />
+        </div>
+      )}
     </div>
   );
 }
 
 // ------------------
-// Map component
+// Map Component
 // ------------------
 function MapComponent({ data }) {
   return (
@@ -149,8 +164,8 @@ function MapComponent({ data }) {
         <Marker key={r.resort} position={[r.lat, r.lon]} icon={markerIcon(verdictColor(r.today.verdict))}>
           <Popup>
             <strong>{r.resort}</strong><br />
-            Today: {r.today.verdict} ({r.today.snow} cm)<br />
-            Tomorrow: {r.tomorrow.verdict} ({r.tomorrow.snow} cm)<br />
+            Today: {verdictLabel(r.today.verdict)} ({r.today.snow} cm)<br />
+            Tomorrow: {verdictLabel(r.tomorrow.verdict)} ({r.tomorrow.snow} cm)<br />
             Wind Today: {r.today.wind} km/h
           </Popup>
         </Marker>
@@ -167,8 +182,8 @@ function BestCard({ title, d, isWinner }) {
     <div style={{ ...styles.bestCard, border: isWinner ? "3px solid gold" : "none", position: "relative" }}>
       {isWinner && <span style={{ position: "absolute", top: 8, right: 8, fontSize: 24 }}>🏆</span>}
       <h3>{title}</h3>
-      <h1 style={{ wordBreak: "break-word", overflowWrap: "break-word", fontSize: "1.5rem", margin: "0.5rem 0" }}>{d.resort}</h1>
-      <div style={{ ...styles.bigVerdict, background: verdictColor(d.verdict) }}>{d.verdict}</div>
+      <h1 style={{ wordBreak: "break-word", overflowWrap: "break-word" }}>{d.resort}</h1>
+      <div style={{ ...styles.bigVerdict, background: verdictColor(d.verdict) }}>{verdictLabel(d.verdict)}</div>
       <p>Snow: {d.snow} cm ({d.freshSnow} cm new)</p>
       <p>Temp: {d.temp}°C</p>
       <p>Wind: {d.wind} km/h</p>
@@ -199,7 +214,7 @@ function DayBox({ title, d }) {
       <p>New: {d.freshSnow} cm</p>
       <p>Temp: {d.temp}°C</p>
       <p>Wind: {d.wind} km/h</p>
-      <div style={{ ...styles.verdict, background: verdictColor(d.verdict) }}>{d.verdict}</div>
+      <div style={{ ...styles.verdict, background: verdictColor(d.verdict) }}>{verdictLabel(d.verdict)}</div>
     </div>
   );
 }
@@ -211,16 +226,14 @@ const styles = {
   page: { padding: 20, background: "#0f172a", color: "white", minHeight: "100vh", fontFamily: "sans-serif" },
   title: { fontSize: 42, marginBottom: 10 },
   bestWrap: { display: "flex", gap: 20, marginBottom: 20, flexWrap: "wrap" },
-  bestCard: { background: "#1e293b", padding: 20, borderRadius: 16, width: 240, overflow: "hidden" },
+  bestCard: { background: "#1e293b", padding: 20, borderRadius: 16, width: 240 },
   bigVerdict: { padding: 10, borderRadius: 12, fontWeight: "bold", marginTop: 10, textAlign: "center" },
   refresh: { marginBottom: 20, padding: 10, borderRadius: 10, background: "#334155", color: "white" },
   mainLayout: { display: "flex", gap: 20, alignItems: "flex-start" },
-  cardsColumn: { flex: 1 },
-  mapColumn: { width: "45%", height: "80vh", position: "sticky", top: 20 },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(250px,1fr))", gap: 16 },
   card: { background: "#1e293b", padding: 16, borderRadius: 16 },
-  dayRow: { display: "flex", gap: 10 },
-  dayBox: { flex: 1, background: "#0f172a", padding: 10, borderRadius: 12 },
+  dayRow: { display: "flex", gap: 10, flexWrap: "wrap" },
+  dayBox: { flex: 1, background: "#0f172a", padding: 10, borderRadius: 12, minWidth: 100 },
   verdict: { marginTop: 8, padding: 6, borderRadius: 8, textAlign: "center", fontWeight: "bold" },
   loadMore: { marginTop: 20, padding: 12, borderRadius: 10, background: "#334155", color: "white", width: "100%" }
 };
