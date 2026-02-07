@@ -3,26 +3,40 @@ const getForecast = require("../shared/forecast");
 const scoreDay = require("../shared/scoring");
 
 module.exports = async function (context) {
-  let results = [];
+  const names = Object.keys(resorts);
 
-  for (const resort of Object.keys(resorts)) {
-    const forecast = await getForecast(resort);
-    const scores = scoreDay(forecast);
+  const forecasts = await Promise.all(names.map(r => getForecast(r)));
 
-    results.push({
+  let all = [];
+
+  for (let i = 0; i < names.length; i++) {
+    const resort = names[i];
+    const forecast = forecasts[i];
+
+    const todayScore = scoreDay(forecast.today);
+    const tomorrowScore = scoreDay(forecast.tomorrow);
+
+    all.push({
       resort,
-      ...forecast,
-      ...scores
+      today: { ...forecast.today, ...todayScore },
+      tomorrow: { ...forecast.tomorrow, ...tomorrowScore }
     });
   }
 
-  results.sort((a, b) => b.snowScore - a.snowScore);
+  const bestToday = [...all]
+    .map(r => ({ resort: r.resort, ...r.today }))
+    .sort((a, b) => b.snowScore - a.snowScore)[0];
+
+  const bestTomorrow = [...all]
+    .map(r => ({ resort: r.resort, ...r.tomorrow }))
+    .sort((a, b) => b.snowScore - a.snowScore)[0];
 
   context.res = {
     status: 200,
     body: {
-      best: results[0],
-      all: results
+      bestToday,
+      bestTomorrow,
+      all
     }
   };
 };
