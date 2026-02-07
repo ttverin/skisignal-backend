@@ -3,22 +3,10 @@ import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-// Fix marker icons for Leaflet (works on Azure / production)
-import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
-import markerIcon from "leaflet/dist/images/marker-icon.png";
-import markerShadow from "leaflet/dist/images/marker-shadow.png";
-
-delete L.Icon.Default.prototype._getIconUrl;
-
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: markerIcon2x,
-  iconUrl: markerIcon,
-  shadowUrl: markerShadow,
-});
-
 const API = "https://skisignal-dev-api.azurewebsites.net/api";
+const PAGE_SIZE = 6;
 
-// Coordinates for resorts
+// Resort coordinates
 const RESORTS = [
   { name: "Zermatt", lat: 46.0207, lon: 7.7491 },
   { name: "Verbier", lat: 46.096, lon: 7.228 },
@@ -36,18 +24,39 @@ const RESORTS = [
   { name: "SaasFee", lat: 46.094, lon: 7.927 },
   { name: "Davos", lat: 46.8028, lon: 9.836 },
   { name: "Klosters", lat: 46.879, lon: 9.844 },
-  { name: "Ischgl", lat: 46.977, lon: 10.300 },
+  { name: "Ischgl", lat: 46.977, lon: 10.3 },
   { name: "Gstaad", lat: 46.492, lon: 7.283 },
   { name: "Kitzbuhel", lat: 47.446, lon: 12.392 },
-  { name: "Sestriere", lat: 44.883, lon: 7.160 },
+  { name: "Sestriere", lat: 44.883, lon: 7.16 },
   { name: "Grindelwald", lat: 46.624, lon: 8.041 },
-  { name: "ValdIsere", lat: 45.448, lon: 6.980 },
+  { name: "ValdIsere", lat: 45.448, lon: 6.98 },
   { name: "LesDeuxAlpes", lat: 45.0167, lon: 6.0667 },
-  { name: "Obergurgl", lat: 46.870, lon: 11.011 }
+  { name: "Obergurgl", lat: 46.87, lon: 11.011 }
 ];
 
+// Verdict color
+function verdictColor(v) {
+  if (v === "GO") return "#22c55e";
+  if (v === "MEH") return "#eab308";
+  return "#ef4444";
+}
+
+// Colored map marker
+function markerIcon(color) {
+  return new L.DivIcon({
+    html: `<div style="
+      background:${color};
+      width:16px;
+      height:16px;
+      border-radius:50%;
+      border:3px solid white;"></div>`,
+    className: ""
+  });
+}
+
 export default function App() {
-  const [data, setData] = useState({ best: null, all: [] });
+  const [data, setData] = useState({ bestToday: null, bestTomorrow: null, all: [] });
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [loading, setLoading] = useState(false);
 
   async function fetchData() {
@@ -56,119 +65,143 @@ export default function App() {
       const res = await fetch(`${API}/best-day`);
       const json = await res.json();
 
-      // Merge lat/lon for map
-      const mergedAll = json.all.map(r => {
-        const coord = RESORTS.find(res => res.name === r.resort);
+      const merged = json.all.map(r => {
+        const coord = RESORTS.find(x => x.name === r.resort);
         return { ...r, lat: coord?.lat, lon: coord?.lon };
       });
 
-      setData({ best: json.best, all: mergedAll });
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
+      setData({ ...json, all: merged });
+    } catch (e) {
+      console.error(e);
     }
+    setLoading(false);
   }
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { fetchData(); }, []);
 
-  function verdictColor(v) {
-    if (v === "GO") return "#22c55e";
-    if (v === "MEH") return "#eab308";
-    return "#ef4444";
-  }
+  const visibleResorts = data.all.slice(0, visibleCount);
+  const hasMore = visibleCount < data.all.length;
 
   return (
-    <div
-      style={{
-        fontFamily: "sans-serif",
-        padding: 30,
-        minHeight: "100vh",
-        width: "100%",
-        background: "#0f172a",
-        color: "white",
-      }}
-    >
-      <h1 style={{ fontSize: 42 }}>🎿 SkiSignal</h1>
+    <div style={styles.page}>
+      <h1 style={styles.title}>🎿 SkiSignal</h1>
 
-      {/* Best Resort */}
-      {data.best && (
-        <div className="bestCard">
-          <h2>🏆 Best resort today</h2>
-          <h1>{data.best.resort}</h1>
-          <h2 style={{ color: verdictColor(data.best.verdict) }}>
-            {data.best.verdict}
-          </h2>
-          <p>
-            Snow: {data.best.snow} cm ({data.best.freshSnow} cm new)
-          </p>
-          <p>Temp: {data.best.temp}°C</p>
-          <p>Wind: {data.best.wind} km/h</p>
-          <p>{data.best.dayOfWeek}</p>
-        </div>
-      )}
-
-      {/* Refresh Button */}
-      <div style={{ margin: "20px 0" }}>
-        <button onClick={fetchData}>Refresh</button>
+      {/* BEST TODAY/TOMORROW */}
+      <div style={styles.bestWrap}>
+        {data.bestToday && <BestCard title="Best Today" d={data.bestToday} />}
+        {data.bestTomorrow && <BestCard title="Best Tomorrow" d={data.bestTomorrow} />}
       </div>
 
-      {loading && <p>Loading snow data...</p>}
+      <button style={styles.refresh} onClick={fetchData}>Refresh</button>
+      {loading && <p>Loading snow…</p>}
 
-      {/* Resorts Grid */}
-      <div className="grid">
-        {data.all.map(r => (
-          <div key={r.resort} className="card">
-            <h2>{r.resort}</h2>
-            <p>
-              Snow: {r.snow} cm ({r.freshSnow} cm new)
-            </p>
-            <p>Temp: {r.temp}°C</p>
-            <p>Wind: {r.wind} km/h</p>
-            <p>{r.dayOfWeek}</p>
-            <div
-              className="verdict"
-              style={{ background: verdictColor(r.verdict) }}
-            >
-              {r.verdict}
-            </div>
+      {/* MAIN LAYOUT */}
+      <div style={styles.mainLayout}>
+        {/* CARDS */}
+        <div style={styles.cardsColumn}>
+          <div style={styles.grid}>
+            {visibleResorts.map(r => <ResortCard key={r.resort} r={r} />)}
           </div>
-        ))}
-      </div>
 
-      {/* Map */}
-      <h2 style={{ marginTop: 40 }}>📍 Map of Resorts</h2>
-      <div style={{ width: "100%", height: "500px" }}>
-        <MapContainer
-          center={[46, 7]}
-          zoom={4}
-          style={{ width: "100%", height: "100%" }}
-        >
-          <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution="&copy; OpenStreetMap contributors"
-          />
-          {data.all.map(
-            r =>
-              r.lat != null &&
-              r.lon != null && (
-                <Marker key={r.resort} position={[r.lat, r.lon]}>
-                  <Popup>
-                    <strong>{r.resort}</strong>
-                    <br />
-                    Snow: {r.snow} cm ({r.freshSnow} cm new)
-                    <br />
-                    Temp: {r.temp}°C
-                    <br />
-                    Verdict: {r.verdict}
-                  </Popup>
-                </Marker>
-              )
+          {hasMore && (
+            <button style={styles.loadMore} onClick={() => setVisibleCount(v => v + PAGE_SIZE)}>
+              Load more resorts
+            </button>
           )}
-        </MapContainer>
+        </div>
+
+        {/* MAP */}
+        <div style={styles.mapColumn}>
+          <MapContainer center={[46.8, 8.2]} zoom={6} style={{ height: "100%", width: "100%" }}>
+            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            {data.all.map(r => r.lat && r.lon && (
+              <Marker key={r.resort} position={[r.lat, r.lon]} icon={markerIcon(verdictColor(r.today.verdict))}>
+                <Popup>
+                  <strong>{r.resort}</strong><br />
+                  Today: {r.today.verdict} | Snow: {r.today.snow} cm | Wind: {r.today.wind} km/h<br />
+                  Tomorrow: {r.tomorrow.verdict} | Snow: {r.tomorrow.snow} cm | Wind: {r.tomorrow.wind} km/h
+                </Popup>
+              </Marker>
+            ))}
+          </MapContainer>
+        </div>
       </div>
     </div>
   );
 }
+
+// ------------------
+// Components
+// ------------------
+
+function BestCard({ title, d }) {
+  return (
+    <div style={{ 
+      ...styles.bestCard, 
+      border: `2px solid ${verdictColor(d.verdict)}`, 
+      boxShadow: `0 0 12px ${verdictColor(d.verdict)}50` 
+    }}>
+      <h3 style={{ marginBottom: 8 }}>🏆 {title}</h3>
+      <h2 style={{ margin: 0, wordBreak: "break-word" }}>{d.resort}</h2>
+
+      <div style={{ ...styles.bigVerdict, background: verdictColor(d.verdict) }}>
+        {d.verdict}
+      </div>
+
+      <p style={{ margin: "8px 0 0 0" }}>Day: {d.dayOfWeek}</p>
+      <p style={{ margin: "2px 0" }}>Snow: {d.snow} cm (New: {d.freshSnow} cm)</p>
+      <p style={{ margin: "2px 0" }}>Temp: {d.temp}°C</p>
+      <p style={{ margin: "2px 0" }}>Wind: {d.wind} km/h</p>
+    </div>
+  );
+}
+
+function ResortCard({ r }) {
+  return (
+    <div style={styles.card}>
+      <h2 style={{ margin: 0, wordBreak: "break-word" }}>{r.resort}</h2>
+      <div style={styles.dayRow}>
+        <DayBox title="Today" d={r.today} />
+        <DayBox title="Tomorrow" d={r.tomorrow} />
+      </div>
+    </div>
+  );
+}
+
+function DayBox({ title, d }) {
+  return (
+    <div style={styles.dayBox}>
+      <h4 style={{ margin: 0 }}>{title}</h4>
+      <p style={{ margin: "2px 0" }}>{d.dayOfWeek}</p>
+      <p style={{ margin: "2px 0" }}>Snow: {d.snow} cm</p>
+      <p style={{ margin: "2px 0" }}>New: {d.freshSnow} cm</p>
+      <p style={{ margin: "2px 0" }}>Temp: {d.temp}°C</p>
+      <p style={{ margin: "2px 0" }}>Wind: {d.wind} km/h</p>
+      <div style={{ ...styles.verdict, background: verdictColor(d.verdict) }}>
+        {d.verdict}
+      </div>
+    </div>
+  );
+}
+
+// ------------------
+// Styles
+// ------------------
+
+const styles = {
+  page: { padding: 20, background: "#0f172a", color: "white", minHeight: "100vh", fontFamily: "sans-serif" },
+  title: { fontSize: 42, marginBottom: 10 },
+  bestWrap: { display: "flex", gap: 20, marginBottom: 20, flexWrap: "wrap" },
+  bestCard: { background: "#1e293b", padding: 20, borderRadius: 16, width: 240, minWidth: 0 },
+  bigVerdict: { padding: 10, borderRadius: 12, fontWeight: "bold", marginTop: 10, textAlign: "center" },
+  refresh: { marginBottom: 20, padding: 10, borderRadius: 10, background: "#334155", color: "white" },
+  mainLayout: { display: "flex", gap: 20, alignItems: "flex-start" },
+  cardsColumn: { flex: 1 },
+  mapColumn: { width: "45%", height: "80vh", position: "sticky", top: 20 },
+  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(250px,1fr))", gap: 16 },
+  card: { background: "#1e293b", padding: 16, borderRadius: 16, minWidth: 0 },
+  dayRow: { display: "flex", gap: 10 },
+  dayBox: { flex: 1, background: "#0f172a", padding: 10, borderRadius: 12, minWidth: 0 },
+  verdict: { marginTop: 8, padding: 6, borderRadius: 8, textAlign: "center", fontWeight: "bold" },
+  loadMore: { marginTop: 20, padding: 12, borderRadius: 10, background: "#334155", color: "white", width: "100%" }
+};
