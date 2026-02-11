@@ -2,10 +2,12 @@ const resorts = require("./resorts");
 
 let cache = {};
 
+// Cache key per resort per hour
 function cacheKey(resort) {
   return resort + new Date().toISOString().slice(0, 13);
 }
 
+// Smooth array with moving average
 function smoothArray(arr, window = 3) {
   const smoothed = [];
   for (let i = 0; i < arr.length; i++) {
@@ -18,6 +20,7 @@ function smoothArray(arr, window = 3) {
   return smoothed;
 }
 
+// Compute a simple score based on snow, temp, wind
 function computeScore({ snow, freshSnow, temp, wind }) {
   let score = 0;
 
@@ -39,10 +42,12 @@ function computeScore({ snow, freshSnow, temp, wind }) {
   return score;
 }
 
+// Verdict and reasons from score
 function verdictFromScore(score, snow, freshSnow, temp, wind) {
   const reasons = [];
   if (freshSnow > 50) reasons.push("deep powder");
   else if (freshSnow > 10) reasons.push("fresh snow");
+
   if (snow < 20) reasons.push("thin cover");
   if (temp > 5) reasons.push("warm");
   if (wind > 30) reasons.push("windy");
@@ -55,6 +60,45 @@ function verdictFromScore(score, snow, freshSnow, temp, wind) {
   return { verdict, reasons };
 }
 
+// Build day forecast from API data
+function buildDay(data, dayIndex, hourStart = 0) {
+  const temp = data.daily.temperature_2m_max[dayIndex];
+  const wind = data.daily.windspeed_10m_max[dayIndex];
+  const date = data.daily.time[dayIndex];
+
+  // Daily snowfall in mm -> cm
+  const freshSnow = Math.round((data.daily.snowfall_sum[dayIndex] ?? 0) * 0.1);
+
+  // Hourly snow depth in meters -> cm
+  const hourlySnow = data.hourly.snow_depth ?? [];
+  let snowDepth = freshSnow; // fallback
+  if (hourlySnow.length > 0) {
+    const slice = hourlySnow.slice(hourStart, hourStart + 24);
+    const smoothed = smoothArray(slice, 3);
+    snowDepth = Math.round(Math.max(...smoothed) * 100); // m -> cm
+  }
+
+  const dayOfWeek = new Date(date).toLocaleDateString("en-US", {
+    weekday: "long",
+  });
+
+  const score = computeScore({ snow: snowDepth, freshSnow, temp, wind });
+  const { verdict, reasons } = verdictFromScore(score, snowDepth, freshSnow, temp, wind);
+
+  return {
+    snow: snowDepth,
+    freshSnow,
+    temp,
+    wind,
+    dayOfWeek,
+    score,
+    crowdScore: 15, // static for now
+    verdict,
+    reasons,
+  };
+}
+
+// Main function to fetch forecast for a resort
 module.exports = async function getForecast(resort) {
   const key = cacheKey(resort);
   if (cache[key]) return cache[key];
@@ -71,49 +115,11 @@ module.exports = async function getForecast(resort) {
   const resp = await fetch(url);
   const data = await resp.json();
 
-  function buildDay(dayIndex, hourStart) {
-    const temp = data.daily.temperature_2m_max[dayIndex];
-    const wind = data.daily.windspeed_10m_max[dayIndex];
-    const date = data.daily.time[dayIndex];
-
-    // SCALE snow properly (mm -> cm)
-    const MODEL_TO_REAL = 1; // daily snowfall in mm
-    const freshSnow = Math.round((data.daily.snowfall_sum[dayIndex] ?? 0) * 1); // mm as cm
-
-    const hourlySnow = data.hourly.snow_depth ?? [];
-    let snowDepth = 0;
-    if (hourlySnow.length > 0) {
-      const slice = hourlySnow.slice(hourStart, hourStart + 24);
-      const smoothed = smoothArray(slice, 3);
-      snowDepth = Math.round(Math.max(...smoothed) * 100); // convert m -> cm
-    } else {
-      snowDepth = freshSnow;
-    }
-
-    const dayOfWeek = new Date(date).toLocaleDateString("en-US", {
-      weekday: "long",
-    });
-
-    const score = computeScore({ snow: snowDepth, freshSnow, temp, wind });
-    const { verdict, reasons } = verdictFromScore(score, snowDepth, freshSnow, temp, wind);
-
-    return {
-      snow: snowDepth,
-      freshSnow,
-      temp,
-      wind,
-      dayOfWeek,
-      score,
-      crowdScore: 15,
-      verdict,
-      reasons,
-    };
-  }
-
-  const today = buildDay(0, 0);
-  const tomorrow = buildDay(1, 24);
+  const today = buildDay(data, 0, 0);
+  const tomorrow = buildDay(data, 1, 24);
 
   const result = { today, tomorrow };
   cache[key] = result;
+
   return result;
 };
