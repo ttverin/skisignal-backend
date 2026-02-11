@@ -1,104 +1,26 @@
 const resorts = require("./resorts");
+const scoreDay = require("../shared/scoring");
 
 let cache = {};
 
-// Cache key per resort per hour
+// Cache key by resort + current hour
 function cacheKey(resort) {
   return resort + new Date().toISOString().slice(0, 13);
 }
 
-// Smooth array with moving average
+// Simple moving average smoothing
 function smoothArray(arr, window = 3) {
   const smoothed = [];
   for (let i = 0; i < arr.length; i++) {
     const start = Math.max(0, i - Math.floor(window / 2));
     const end = Math.min(arr.length, i + Math.floor(window / 2) + 1);
-    const vals = arr.slice(start, end).map(v => v ?? 0);
-    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const slice = arr.slice(start, end).map(v => v ?? 0);
+    const avg = slice.reduce((a, b) => a + b, 0) / slice.length;
     smoothed.push(avg);
   }
   return smoothed;
 }
 
-// Compute a simple score based on snow, temp, wind
-function computeScore({ snow, freshSnow, temp, wind }) {
-  let score = 0;
-
-  if (snow > 150) score += 40;
-  else if (snow > 100) score += 30;
-  else if (snow > 50) score += 20;
-  else if (snow > 20) score += 10;
-  else score -= 20;
-
-  if (freshSnow > 50) score += 20;
-  else if (freshSnow > 20) score += 10;
-
-  if (temp >= -5 && temp <= 2) score += 10;
-  else if (temp > 5 || temp < -10) score -= 10;
-
-  if (wind > 50) score -= 20;
-  else if (wind > 30) score -= 10;
-
-  return score;
-}
-
-// Verdict and reasons from score
-function verdictFromScore(score, snow, freshSnow, temp, wind) {
-  const reasons = [];
-  if (freshSnow > 50) reasons.push("deep powder");
-  else if (freshSnow > 10) reasons.push("fresh snow");
-
-  if (snow < 20) reasons.push("thin cover");
-  if (temp > 5) reasons.push("warm");
-  if (wind > 30) reasons.push("windy");
-  if (wind > 50) reasons.push("storm day");
-
-  let verdict = "SKIP";
-  if (score >= 70) verdict = "GO";
-  else if (score >= 50) verdict = "MEH";
-
-  return { verdict, reasons };
-}
-
-// Build day forecast from API data
-function buildDay(data, dayIndex, hourStart = 0) {
-  const temp = data.daily.temperature_2m_max[dayIndex];
-  const wind = data.daily.windspeed_10m_max[dayIndex];
-  const date = data.daily.time[dayIndex];
-
-  // Daily snowfall in mm -> cm
-  const freshSnow = Math.round((data.daily.snowfall_sum[dayIndex] ?? 0) * 0.1);
-
-  // Hourly snow depth in meters -> cm
-  const hourlySnow = data.hourly.snow_depth ?? [];
-  let snowDepth = freshSnow; // fallback
-  if (hourlySnow.length > 0) {
-    const slice = hourlySnow.slice(hourStart, hourStart + 24);
-    const smoothed = smoothArray(slice, 3);
-    snowDepth = Math.round(Math.max(...smoothed) * 100); // m -> cm
-  }
-
-  const dayOfWeek = new Date(date).toLocaleDateString("en-US", {
-    weekday: "long",
-  });
-
-  const score = computeScore({ snow: snowDepth, freshSnow, temp, wind });
-  const { verdict, reasons } = verdictFromScore(score, snowDepth, freshSnow, temp, wind);
-
-  return {
-    snow: snowDepth,
-    freshSnow,
-    temp,
-    wind,
-    dayOfWeek,
-    score,
-    crowdScore: 15, // static for now
-    verdict,
-    reasons,
-  };
-}
-
-// Main function to fetch forecast for a resort
 module.exports = async function getForecast(resort) {
   const key = cacheKey(resort);
   if (cache[key]) return cache[key];
@@ -115,11 +37,44 @@ module.exports = async function getForecast(resort) {
   const resp = await fetch(url);
   const data = await resp.json();
 
-  const today = buildDay(data, 0, 0);
-  const tomorrow = buildDay(data, 1, 24);
+  function buildDay(dayIndex, hourStart) {
+    const temp = data.daily.temperature_2m_max[dayIndex];
+    const wind = data.daily.windspeed_10m_max[dayIndex];
+    const date = data.daily.time[dayIndex];
+
+    // Fresh snow from daily snowfall_sum (mm -> cm)
+    const freshSnow = Math.round((data.daily.snowfall_sum[dayIndex] ?? 0) / 10);
+
+    // Snow from hourly snow depth (m -> cm)
+    let snowDepth = freshSnow;
+    const hourlySnow = data.hourly.snow_depth ?? [];
+    if (hourlySnow.length > 0) {
+      const slice = hourlySnow.slice(hourStart, hourStart + 24);
+      const smoothed = smoothArray(slice, 3);
+      snowDepth = Math.round(Math.max(...smoothed) * 100); // meters -> cm
+    }
+
+    const dayOfWeek = new Date(date).toLocaleDateString("en-US", {
+      weekday: "long",
+    });
+
+    // Use shared scoring logic
+    const scoring = scoreDay({ snow: snowDepth, freshSnow, temp, wind, dayOfWeek });
+
+    return {
+      snow: snowDepth,
+      freshSnow,
+      temp,
+      wind,
+      dayOfWeek,
+      ...scoring,
+    };
+  }
+
+  const today = buildDay(0, 0);
+  const tomorrow = buildDay(1, 24);
 
   const result = { today, tomorrow };
   cache[key] = result;
-
   return result;
 };
