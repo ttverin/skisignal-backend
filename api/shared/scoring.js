@@ -5,28 +5,34 @@ module.exports = function scoreDay({ snow, freshSnow, temp, wind, dayOfWeek }) {
   // -----------------------
   // 1. Fresh snow (MAIN DRIVER)
   // -----------------------
-  if (freshSnow > 60) {
-    score += 60;
-    reasons.push("deep powder");
-  } else if (freshSnow > 30) {
-    score += 45;
+  if (freshSnow > 30) {
+    score += 40;
     reasons.push("powder");
   } else if (freshSnow > 15) {
-    score += 30;
+    score += 25;
     reasons.push("fresh snow");
   } else if (freshSnow > 5) {
-    score += 15;
+    score += 10;
     reasons.push("dusting");
+  } else if (freshSnow > 0) {
+    score += 5;
+    reasons.push("light dusting");
   }
 
   // -----------------------
   // 2. Base depth
   // -----------------------
-  if (snow > 150) score += 20;
-  else if (snow > 80) score += 15;
-  else if (snow > 40) score += 10;
-  else if (snow < 20) {
-    score -= 20;
+  if (snow > 150) {
+    score += 25;
+    reasons.push("deep base");
+  } else if (snow > 100) {
+    score += 20;
+    reasons.push("good base");
+  } else if (snow > 50) {
+    score += 10;
+    reasons.push("moderate base");
+  } else if (snow < 20) {
+    score -= 15;
     reasons.push("thin cover");
   }
 
@@ -38,25 +44,22 @@ module.exports = function scoreDay({ snow, freshSnow, temp, wind, dayOfWeek }) {
     reasons.push("cold smoke");
   } else if (temp <= -2) {
     score += 5;
-  } else if (temp > 3) {
-    score -= 10;
+  } else if (temp > 5) {
+    score -= 5;
     reasons.push("warm");
-  } else if (temp > 7) {
-    score -= 25;
-    reasons.push("slushy");
   }
 
   // -----------------------
-  // 4. Wind (huge factor)
+  // 4. Wind
   // -----------------------
   if (wind > 80) {
-    score -= 50;
+    score -= 40;
     reasons.push("lifts closed");
   } else if (wind > 60) {
-    score -= 30;
+    score -= 20;
     reasons.push("wind holds");
   } else if (wind > 40) {
-    score -= 15;
+    score -= 10;
     reasons.push("windy");
   }
 
@@ -64,21 +67,20 @@ module.exports = function scoreDay({ snow, freshSnow, temp, wind, dayOfWeek }) {
   // 5. Crowds
   // -----------------------
   let crowdScore = 0;
-
   if (["Saturday", "Sunday"].includes(dayOfWeek)) {
-    crowdScore += 25;
-    score -= 10;
+    crowdScore += 20;
+    score -= 5;
   }
 
-  if (freshSnow > 30) {
-    crowdScore += 15;
+  if (freshSnow > 20) {
+    crowdScore += 10;
     score -= 5;
   }
 
   // -----------------------
   // 6. Storm skiing bonus
   // -----------------------
-  if (freshSnow > 40 && wind < 50) {
+  if (freshSnow > 30 && wind < 50) {
     score += 10;
     reasons.push("storm day");
   }
@@ -87,11 +89,9 @@ module.exports = function scoreDay({ snow, freshSnow, temp, wind, dayOfWeek }) {
   // FINAL VERDICT
   // -----------------------
   let verdict = "SKIP";
-
-  if (score >= 80) verdict = "GO";
-  else if (score >= 55) verdict = "GO (storm)";
-  else if (score >= 35) verdict = "MEH";
-  else verdict = "SKIP";
+  if (score >= 70) verdict = "GO";
+  else if (score >= 50) verdict = "MEH";
+  else if (score >= 30) verdict = "GOOD";
 
   return {
     score,
