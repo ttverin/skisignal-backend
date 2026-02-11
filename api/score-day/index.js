@@ -6,16 +6,18 @@ module.exports = async function (context, req) {
 
   try {
     const forecast = await getForecast(resort);
-    const scores = scoreDay(forecast);
+    const todayScore = scoreDay(forecast.today);
+    const tomorrowScore = scoreDay(forecast.tomorrow);
 
     context.res = {
       status: 200,
       body: {
         resort,
-        ...forecast,
-        ...scores 
+        today: { ...forecast.today, ...todayScore },
+        tomorrow: { ...forecast.tomorrow, ...tomorrowScore }
       }
     };
+
   } catch (err) {
     context.res = { status: 500, body: { error: err.message } };
   }
