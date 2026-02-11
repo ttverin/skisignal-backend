@@ -6,7 +6,6 @@ function cacheKey(resort) {
   return resort + new Date().toISOString().slice(0, 13);
 }
 
-// Snow smoothing helper (optional)
 function smoothArray(arr, window = 3) {
   const smoothed = [];
   for (let i = 0; i < arr.length; i++) {
@@ -19,39 +18,31 @@ function smoothArray(arr, window = 3) {
   return smoothed;
 }
 
-// Scoring logic
 function computeScore({ snow, freshSnow, temp, wind }) {
   let score = 0;
 
-  // Snow depth
   if (snow > 150) score += 40;
   else if (snow > 100) score += 30;
   else if (snow > 50) score += 20;
   else if (snow > 20) score += 10;
-  else score -= 20; // very thin
+  else score -= 20;
 
-  // Fresh snow
   if (freshSnow > 50) score += 20;
   else if (freshSnow > 20) score += 10;
 
-  // Temperature
-  if (temp >= -5 && temp <= 2) score += 10; // ideal skiing temp
+  if (temp >= -5 && temp <= 2) score += 10;
   else if (temp > 5 || temp < -10) score -= 10;
 
-  // Wind penalty
   if (wind > 50) score -= 20;
   else if (wind > 30) score -= 10;
 
   return score;
 }
 
-// Convert score to verdict and reasons
 function verdictFromScore(score, snow, freshSnow, temp, wind) {
   const reasons = [];
-
   if (freshSnow > 50) reasons.push("deep powder");
   else if (freshSnow > 10) reasons.push("fresh snow");
-
   if (snow < 20) reasons.push("thin cover");
   if (temp > 5) reasons.push("warm");
   if (wind > 30) reasons.push("windy");
@@ -85,14 +76,18 @@ module.exports = async function getForecast(resort) {
     const wind = data.daily.windspeed_10m_max[dayIndex];
     const date = data.daily.time[dayIndex];
 
-    const freshSnow = Math.round((data.daily.snowfall_sum[dayIndex] ?? 0) * 1.2);
+    // SCALE snow properly (mm -> cm)
+    const MODEL_TO_REAL = 1; // daily snowfall in mm
+    const freshSnow = Math.round((data.daily.snowfall_sum[dayIndex] ?? 0) * 1); // mm as cm
 
     const hourlySnow = data.hourly.snow_depth ?? [];
     let snowDepth = 0;
-
     if (hourlySnow.length > 0) {
       const slice = hourlySnow.slice(hourStart, hourStart + 24);
-      snowDepth = Math.max(...slice.map(v => v ?? 0));
+      const smoothed = smoothArray(slice, 3);
+      snowDepth = Math.round(Math.max(...smoothed) * 100); // convert m -> cm
+    } else {
+      snowDepth = freshSnow;
     }
 
     const dayOfWeek = new Date(date).toLocaleDateString("en-US", {
@@ -103,13 +98,13 @@ module.exports = async function getForecast(resort) {
     const { verdict, reasons } = verdictFromScore(score, snowDepth, freshSnow, temp, wind);
 
     return {
-      snow: Math.round(snowDepth),
+      snow: snowDepth,
       freshSnow,
       temp,
       wind,
       dayOfWeek,
       score,
-      crowdScore: 15, // keep your original
+      crowdScore: 15,
       verdict,
       reasons,
     };
