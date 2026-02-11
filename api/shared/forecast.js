@@ -38,8 +38,9 @@ module.exports = async function getForecast(resort) {
     const temp = data.daily.temperature_2m_max[dayIndex];
     const wind = data.daily.windspeed_10m_max[dayIndex];
     const date = data.daily.time[dayIndex];
-    const MODEL_TO_REAL = 0.35;
-    const freshSnow = (data.daily.snowfall_sum[dayIndex] ?? 0) * MODEL_TO_REAL;
+
+    // Realistic conversion: 1 mm water ~ 1.5 cm snow
+    const freshSnow = (data.daily.snowfall_sum[dayIndex] ?? 0) * 1.5;
 
     const hourlySnow = data.hourly.snow_depth ?? [];
     let snowDepth = 0;
@@ -59,8 +60,8 @@ module.exports = async function getForecast(resort) {
     });
 
     return {
-      snow: Math.round(snowDepth * 100),
-      freshSnow: Math.round(freshSnow * 100),
+      snow: Math.round(snowDepth),       // cm, no crazy *100
+      freshSnow: Math.round(freshSnow),  // realistic cm
       temp,
       wind,
       dayOfWeek,
