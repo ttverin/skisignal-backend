@@ -23,13 +23,31 @@ module.exports = async function (context) {
     });
   }
 
-  const bestToday = [...all]
-    .map(r => ({ resort: r.resort, ...r.today }))
-    .sort((a, b) => b.snowScore - a.snowScore)[0];
+function verdictRank(v) {
+  if (v === "GO") return 3;
+  if (v === "GO (storm)") return 2;
+  if (v === "MEH") return 1;
+  return 0;
+}
 
-  const bestTomorrow = [...all]
-    .map(r => ({ resort: r.resort, ...r.tomorrow }))
-    .sort((a, b) => b.snowScore - a.snowScore)[0];
+function pickBest(all, dayKey) {
+  return [...all]
+    .map(r => ({ resort: r.resort, ...r[dayKey] }))
+    .sort((a, b) => {
+      // verdict priority
+      const vDiff = verdictRank(b.verdict) - verdictRank(a.verdict);
+      if (vDiff !== 0) return vDiff;
+
+      // main score
+      if (b.score !== a.score) return b.score - a.score;
+
+      // powder tie-break
+      return (b.freshSnow ?? 0) - (a.freshSnow ?? 0);
+    })[0];
+}
+
+const bestToday = pickBest(all, "today");
+const bestTomorrow = pickBest(all, "tomorrow");
 
   context.res = {
     status: 200,
