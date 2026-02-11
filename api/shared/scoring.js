@@ -89,9 +89,8 @@ module.exports = function scoreDay({ snow, freshSnow, temp, wind, dayOfWeek }) {
   // FINAL VERDICT
   // -----------------------
   let verdict = "SKIP";
-  if (score >= 70) verdict = "GO";
-  else if (score >= 50) verdict = "MEH";
-  else if (score >= 30) verdict = "GOOD";
+  if (score >= 21) verdict = "GO";
+  else if (score >= 15) verdict = "MEH";
 
   return {
     score,
