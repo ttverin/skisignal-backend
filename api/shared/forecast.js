@@ -35,10 +35,11 @@ module.exports = async function getForecast(resort) {
   const data = await resp.json();
 
   function buildDay(dayIndex, hourStart) {
-    const freshSnow = data.daily.snowfall_sum[dayIndex] ?? 0;
     const temp = data.daily.temperature_2m_max[dayIndex];
     const wind = data.daily.windspeed_10m_max[dayIndex];
     const date = data.daily.time[dayIndex];
+    const MODEL_TO_REAL = 0.35;
+    const freshSnow = (data.daily.snowfall_sum[dayIndex] ?? 0) * MODEL_TO_REAL;
 
     const hourlySnow = data.hourly.snow_depth ?? [];
     let snowDepth = 0;
