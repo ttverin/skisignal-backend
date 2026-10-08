@@ -97,7 +97,7 @@ resource "azurerm_linux_function_app" "func" {
 
   site_config {
     application_stack {
-      node_version = "18"
+      node_version = "22"
     }
     cors {
       allowed_origins = [

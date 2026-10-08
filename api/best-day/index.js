@@ -1,11 +1,27 @@
 const resorts = require("../shared/resorts");
 const getForecast = require("../shared/forecast");
 const scoreDay = require("../shared/scoring");
+const { compareDays, pickBest } = require("../shared/recommendations");
 
-module.exports = async function (context) {
+module.exports = async function (context, req) {
+  const priority = req.query.priority || "balanced";
+  if (!scoreDay.PRIORITIES.includes(priority)) {
+    context.res = {
+      status: 400,
+      body: { error: "priority must be balanced, powder, quiet, or low-wind" }
+    };
+    return;
+  }
+
   const names = Object.keys(resorts);
 
-  const forecasts = await Promise.all(names.map(r => getForecast(r)));
+  let forecasts;
+  try {
+    forecasts = await Promise.all(names.map(r => getForecast(r)));
+  } catch (err) {
+    context.res = { status: 502, body: { error: err.message } };
+    return;
+  }
 
   let all = [];
 
@@ -13,8 +29,8 @@ module.exports = async function (context) {
     const resort = names[i];
     const forecast = forecasts[i];
 
-    const todayScore = scoreDay(forecast.today);
-    const tomorrowScore = scoreDay(forecast.tomorrow);
+    const todayScore = scoreDay(forecast.today, priority);
+    const tomorrowScore = scoreDay(forecast.tomorrow, priority);
 
     all.push({
       resort,
@@ -23,36 +39,15 @@ module.exports = async function (context) {
     });
   }
 
-function verdictRank(v) {
-  if (v === "GO") return 3;
-  if (v === "GO (storm)") return 2;
-  if (v === "MEH") return 1;
-  return 0;
-}
-
-function pickBest(all, dayKey) {
-  return [...all]
-    .map(r => ({ resort: r.resort, ...r[dayKey] }))
-    .sort((a, b) => {
-      // verdict priority
-      const vDiff = verdictRank(b.verdict) - verdictRank(a.verdict);
-      if (vDiff !== 0) return vDiff;
-
-      // main score
-      if (b.score !== a.score) return b.score - a.score;
-
-      // powder tie-break
-      return (b.freshSnow ?? 0) - (a.freshSnow ?? 0);
-    })[0];
-}
-
+all.sort((a, b) => compareDays(a.today, b.today));
 const bestToday = pickBest(all, "today");
 const bestTomorrow = pickBest(all, "tomorrow");
 
-  context.res = {
-    status: 200,
-    body: {
-      bestToday,
+context.res = {
+  status: 200,
+  body: {
+    priority,
+    bestToday,
       bestTomorrow,
       all
     }

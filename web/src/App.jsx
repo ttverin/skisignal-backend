@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -72,6 +72,8 @@ export default function App() {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [loading, setLoading] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [priority, setPriority] = useState("balanced");
+  const [error, setError] = useState("");
 
   useEffect(() => {
     function handleResize() {
@@ -82,22 +84,29 @@ export default function App() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  async function fetchData() {
+  const fetchData = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
-      const res = await fetch(`${API}/best-day`);
+      const res = await fetch(`${API}/best-day?priority=${encodeURIComponent(priority)}`);
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.error || `Request failed (${res.status})`);
+      }
       const json = await res.json();
       const merged = json.all.map(r => {
         const coord = RESORTS.find(x => x.name === r.resort);
         return { ...r, lat: coord?.lat, lon: coord?.lon };
       });
       setData({ ...json, all: merged });
+    } catch (err) {
+      setError(err.message);
     } finally {
       setLoading(false);
     }
-  }
+  }, [priority]);
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   const visibleResorts = data.all.slice(0, visibleCount);
   const hasMore = visibleCount < data.all.length;
@@ -111,14 +120,37 @@ export default function App() {
     <div style={styles.page}>
       <h1 style={styles.title}>🎿 SkiSignal</h1>
 
+      <label style={styles.priorityLabel}>
+        What matters most?
+        <select
+          value={priority}
+          onChange={event => setPriority(event.target.value)}
+          style={styles.prioritySelect}
+        >
+          <option value="balanced">Balanced</option>
+          <option value="powder">Fresh powder</option>
+          <option value="low-wind">Lower wind</option>
+          <option value="quiet">Fewer crowds</option>
+        </select>
+      </label>
+      <p style={styles.disclaimer}>
+        Wind and rain are forecast risk signals. Crowd pressure is estimated from weekends and fresh snow;
+        live lift status and resort-wide conditions are not available.
+      </p>
+
       {/* WINNER CARDS */}
       <div style={styles.bestGrid}>
-        {data.bestToday && <BestCard title="Best Today" d={data.bestToday} isWinner />}
-        {data.bestTomorrow && <BestCard title="Best Tomorrow" d={data.bestTomorrow} isWinner />}
+        {data.all.length > 0 && (data.bestToday
+          ? <BestCard title="Best Today" d={data.bestToday} isWinner priority={priority} />
+          : <NoRecommendationCard title="Today" />)}
+        {data.all.length > 0 && (data.bestTomorrow
+          ? <BestCard title="Best Tomorrow" d={data.bestTomorrow} isWinner priority={priority} />
+          : <NoRecommendationCard title="Tomorrow" />)}
       </div>
 
       <button style={styles.refresh} onClick={fetchData}>Refresh</button>
       {loading && <p>Loading snow…</p>}
+      {error && <p role="alert" style={styles.error}>{error}</p>}
 
       {/* MOBILE MAP — BELOW WINNERS */}
       {isMobile && (
@@ -132,7 +164,12 @@ export default function App() {
         <div style={{ flex: 1 }}>
           <div style={styles.grid}>
             {visibleResorts.map(r => (
-              <ResortCard key={r.resort} r={r} isWinner={winnerNames.includes(r.resort)} />
+              <ResortCard
+                key={r.resort}
+                r={r}
+                isWinner={winnerNames.includes(r.resort)}
+                priority={priority}
+              />
             ))}
           </div>
 
@@ -164,9 +201,9 @@ function MapComponent({ data }) {
         <Marker key={r.resort} position={[r.lat, r.lon]} icon={markerIcon(verdictColor(r.today.verdict))}>
           <Popup>
             <strong>{r.resort}</strong><br />
-            Today: {verdictLabel(r.today.verdict)} ({r.today.snow} cm)<br />
-            Tomorrow: {verdictLabel(r.tomorrow.verdict)} ({r.tomorrow.snow} cm)<br />
-            Wind: {r.today.wind} km/h
+            Today: {verdictLabel(r.today.verdict)} ({r.today.score} pts)<br />
+            Tomorrow: {verdictLabel(r.tomorrow.verdict)} ({r.tomorrow.score} pts)<br />
+            New snow: {r.today.freshSnow} cm · Wind/gust: {r.today.wind}/{r.today.windGust} km/h
           </Popup>
         </Marker>
       ))}
@@ -177,7 +214,7 @@ function MapComponent({ data }) {
 // ------------------
 // CARDS
 // ------------------
-function BestCard({ title, d, isWinner }) {
+function BestCard({ title, d, isWinner, priority }) {
   return (
     <div style={{ ...styles.bestCard, border: isWinner ? "3px solid gold" : "none" }}>
       {isWinner && <span style={styles.trophy}>🏆</span>}
@@ -186,37 +223,126 @@ function BestCard({ title, d, isWinner }) {
       <div style={{ ...styles.bigVerdict, background: verdictColor(d.verdict) }}>
         {verdictLabel(d.verdict)}
       </div>
-      <p>Snow: {d.snow} cm ({d.freshSnow} cm new)</p>
-      <p>Temp: {d.temp}°C</p>
-      <p>Wind: {d.wind} km/h</p>
+      <p>{d.score} points · {d.verdict}</p>
+      <p>Base: {d.snow} cm · New snow: {d.freshSnow} cm</p>
+      <p>High: {d.temp}°C · Forecast point: {d.elevation} m</p>
+      <p>Wind/gust: {d.wind}/{d.windGust} km/h</p>
+      <p>Rain: {d.rain} mm · Precipitation chance: {d.precipitationProbability}%</p>
+      <p>Estimated crowd pressure: {d.crowdScore}/30</p>
       <p>{d.dayOfWeek}</p>
+      <ReasonList reasons={d.reasons} />
+      <ConditionFeedback resort={d.resort} priority={priority} day={d} />
     </div>
   );
 }
 
-function ResortCard({ r, isWinner }) {
+function NoRecommendationCard({ title }) {
+  return (
+    <div style={styles.bestCard}>
+      <h3>Best {title}</h3>
+      <p>No resort currently meets the minimum recommendation score.</p>
+    </div>
+  );
+}
+
+function ResortCard({ r, isWinner, priority }) {
   return (
     <div style={{ ...styles.card, border: isWinner ? "2px solid gold" : "none" }}>
       {isWinner && <span style={styles.trophySmall}>🏆</span>}
       <h2 style={styles.resortTitle}>{r.resort}</h2>
       <div style={styles.dayRow}>
-        <DayBox title="Today" d={r.today} />
-        <DayBox title="Tomorrow" d={r.tomorrow} />
+        <DayBox title="Today" d={r.today} resort={r.resort} priority={priority} />
+        <DayBox title="Tomorrow" d={r.tomorrow} resort={r.resort} priority={priority} />
       </div>
     </div>
   );
 }
 
-function DayBox({ title, d }) {
+function DayBox({ title, d, resort, priority }) {
   return (
     <div style={styles.dayBox}>
       <h4>{title}</h4>
-      <p>Snow: {d.snow} cm</p>
-      <p>Temp: {d.temp}°C</p>
-      <p>Wind: {d.wind} km/h</p>
+      <p>{d.score} points · Base: {d.snow} cm</p>
+      <p>New snow: {d.freshSnow} cm · High: {d.temp}°C · Point: {d.elevation} m</p>
+      <p>Wind/gust: {d.wind}/{d.windGust} km/h</p>
+      <p>Rain: {d.rain} mm · Precipitation chance: {d.precipitationProbability}%</p>
+      <p>Estimated crowd pressure: {d.crowdScore}/30</p>
       <div style={{ ...styles.verdict, background: verdictColor(d.verdict) }}>
         {verdictLabel(d.verdict)}
       </div>
+      <ReasonList reasons={d.reasons} />
+      <ConditionFeedback resort={resort} priority={priority} day={d} />
+    </div>
+  );
+}
+
+function ReasonList({ reasons }) {
+  return (
+    <p style={styles.reasons}>
+      {reasons.length > 0 ? reasons.join(" · ") : "No strong positive or negative signals"}
+    </p>
+  );
+}
+
+function ConditionFeedback({ resort, priority, day }) {
+  const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setMessage("");
+  }, [resort, priority, day.date, day.score]);
+
+  async function submitRating(rating) {
+    setSaving(true);
+    setMessage("");
+    try {
+      const response = await fetch(`${API}/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resort,
+          date: day.date,
+          priority,
+          rating,
+          score: day.score,
+          verdict: day.verdict,
+          snow: day.snow,
+          freshSnow: day.freshSnow,
+          temp: day.temp,
+          wind: day.wind,
+          windGust: day.windGust,
+          rain: day.rain,
+          precipitationProbability: day.precipitationProbability,
+          crowdScore: day.crowdScore,
+          reasons: day.reasons
+        })
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
+      setMessage("Thanks — feedback saved");
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={styles.feedback}>
+      <span>How were conditions?</span>
+      {["poor", "mixed", "good"].map(rating => (
+        <button
+          key={rating}
+          type="button"
+          disabled={saving}
+          onClick={() => submitRating(rating)}
+          aria-label={`Rate ${resort} on ${day.date} as ${rating}`}
+          style={styles.feedbackButton}
+        >
+          {rating}
+        </button>
+      ))}
+      {message && <small role="status">{message}</small>}
     </div>
   );
 }
@@ -227,6 +353,10 @@ function DayBox({ title, d }) {
 const styles = {
   page: { padding: 20, background: "#0f172a", color: "white", minHeight: "100vh", fontFamily: "sans-serif" },
   title: { fontSize: 42, marginBottom: 10 },
+  priorityLabel: { display: "flex", gap: 10, alignItems: "center", fontWeight: "bold" },
+  prioritySelect: { padding: 8, borderRadius: 8, background: "#1e293b", color: "white" },
+  disclaimer: { color: "#cbd5e1", maxWidth: 850, fontSize: 14 },
+  error: { color: "#fecaca" },
 
   bestGrid: {
     display: "grid",
@@ -265,6 +395,9 @@ const styles = {
   dayBox: { flex: 1, background: "#0f172a", padding: 10, borderRadius: 12, minWidth: 0 },
 
   verdict: { marginTop: 8, padding: 6, borderRadius: 8, textAlign: "center", fontWeight: "bold" },
+  reasons: { color: "#cbd5e1", fontSize: 13, lineHeight: 1.5 },
+  feedback: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", fontSize: 12 },
+  feedbackButton: { padding: "4px 7px", borderRadius: 6, background: "#334155", color: "white" },
 
   loadMore: { marginTop: 20, padding: 12, borderRadius: 10, background: "#334155", color: "white", width: "100%" }
 };

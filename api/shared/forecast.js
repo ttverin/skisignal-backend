@@ -1,5 +1,4 @@
 const resorts = require("./resorts");
-const scoreDay = require("../shared/scoring");
 
 let cache = {};
 
@@ -14,9 +13,8 @@ function smoothArray(arr, window = 3) {
   for (let i = 0; i < arr.length; i++) {
     const start = Math.max(0, i - Math.floor(window / 2));
     const end = Math.min(arr.length, i + Math.floor(window / 2) + 1);
-    const slice = arr.slice(start, end).map(v => v ?? 0);
-    const avg = slice.reduce((a, b) => a + b, 0) / slice.length;
-    smoothed.push(avg);
+    const slice = arr.slice(start, end).filter(Number.isFinite);
+    smoothed.push(slice.length ? slice.reduce((a, b) => a + b, 0) / slice.length : null);
   }
   return smoothed;
 }
@@ -30,44 +28,61 @@ module.exports = async function getForecast(resort) {
 
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${r.lat}&longitude=${r.lon}` +
-    `&daily=snowfall_sum,temperature_2m_max,windspeed_10m_max` +
+    `&daily=snowfall_sum,rain_sum,temperature_2m_max,windspeed_10m_max,wind_gusts_10m_max,precipitation_probability_max` +
     `&hourly=snow_depth` +
     `&timezone=auto`;
 
   const resp = await fetch(url);
+  if (!resp.ok) {
+    throw new Error(`Weather forecast request failed (${resp.status})`);
+  }
   const data = await resp.json();
 
-  function buildDay(dayIndex, hourStart) {
-    const temp = data.daily.temperature_2m_max[dayIndex];
-    const wind = data.daily.windspeed_10m_max[dayIndex];
-    const date = data.daily.time[dayIndex];
-
-    // Fresh snow from daily snowfall_sum (mm -> cm)
-    const freshSnow = Math.round((data.daily.snowfall_sum[dayIndex] ?? 0) / 10);
-
-    // Snow from hourly snow depth (m -> cm)
-    let snowDepth = freshSnow;
-    const hourlySnow = data.hourly.snow_depth ?? [];
-    if (hourlySnow.length > 0) {
-      const slice = hourlySnow.slice(hourStart, hourStart + 24);
-      const smoothed = smoothArray(slice, 3);
-      snowDepth = Math.round(Math.max(...smoothed) * 100); // meters -> cm
+  function requiredNumber(value, field) {
+    if (!Number.isFinite(value)) {
+      throw new Error(`Weather forecast is missing ${field} for ${resort}`);
     }
+    return value;
+  }
 
-    const dayOfWeek = new Date(date).toLocaleDateString("en-US", {
+  function buildDay(dayIndex, hourStart) {
+    const date = data.daily?.time?.[dayIndex];
+    if (!date) throw new Error(`Weather forecast is missing the date for ${resort}`);
+
+    const freshSnow = requiredNumber(data.daily.snowfall_sum[dayIndex], "snowfall");
+    const temp = requiredNumber(data.daily.temperature_2m_max[dayIndex], "temperature");
+    const wind = requiredNumber(data.daily.windspeed_10m_max[dayIndex], "wind speed");
+    const windGust = requiredNumber(data.daily.wind_gusts_10m_max[dayIndex], "wind gust");
+    const rain = requiredNumber(data.daily.rain_sum[dayIndex], "rainfall");
+    const hourlySnow = data.hourly.snow_depth ?? [];
+    const slice = hourlySnow.slice(hourStart, hourStart + 24);
+    if (slice.length === 0) {
+      throw new Error(`Weather forecast is missing snow depth for ${resort} on ${date}`);
+    }
+    const smoothedSnow = smoothArray(slice, 3).filter(Number.isFinite);
+    if (smoothedSnow.length === 0) {
+      throw new Error(`Weather forecast has no usable snow depth for ${resort} on ${date}`);
+    }
+    const snowDepth = Math.round(Math.max(...smoothedSnow) * 100);
+
+    const dayOfWeek = new Date(`${date}T12:00:00`).toLocaleDateString("en-US", {
       weekday: "long",
     });
 
-    // Use shared scoring logic
-    const scoring = scoreDay({ snow: snowDepth, freshSnow, temp, wind, dayOfWeek });
-
     return {
+      date,
       snow: snowDepth,
-      freshSnow,
+      freshSnow: Math.round(freshSnow * 10) / 10,
       temp,
       wind,
+      windGust,
+      rain: Math.round(rain * 10) / 10,
+      precipitationProbability: requiredNumber(
+        data.daily.precipitation_probability_max?.[dayIndex],
+        "precipitation probability"
+      ),
+      elevation: requiredNumber(data.elevation, "resort elevation"),
       dayOfWeek,
-      ...scoring,
     };
   }
 
