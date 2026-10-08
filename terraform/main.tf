@@ -100,7 +100,11 @@ resource "azurerm_linux_function_app" "func" {
       node_version = "18"
     }
     cors {
-      allowed_origins = ["*"]
+      allowed_origins = [
+        "https://skisignal.com",
+        "https://www.skisignal.com",
+        "https://${azurerm_static_web_app.ui.default_host_name}"
+      ]
       support_credentials = false
     }
   }
@@ -121,7 +125,7 @@ resource "azuread_application" "ci" {
 }
 
 resource "azuread_service_principal" "ci" {
-  application_id = azuread_application.ci.application_id
+  client_id = azuread_application.ci.client_id
 }
 
 resource "azuread_application_password" "ci" {
