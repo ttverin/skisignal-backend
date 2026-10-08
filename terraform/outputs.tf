@@ -1,6 +1,6 @@
 output "ci_client_id" {
   description = "Service Principal Client ID for GitHub Actions"
-  value       = azuread_application.ci.application_id
+  value       = azuread_application.ci.client_id
 }
 
 output "ci_client_secret" {
