@@ -54,6 +54,13 @@ resource "azurerm_storage_container" "tfstate" {
   container_access_type = "private"
 }
 
+# Deployment package container required by Flex Consumption function apps
+resource "azurerm_storage_container" "func_deployment" {
+  name                  = "deploymentpackage"
+  storage_account_name  = azurerm_storage_account.storage.name
+  container_access_type = "private"
+}
+
 
 # -----------------------
 # Application Insights
@@ -72,33 +79,35 @@ resource "azurerm_application_insights" "ai" {
 }
 
 # -----------------------
-# App Service Plan (Linux Consumption)
+# App Service Plan (Flex Consumption)
 # -----------------------
 resource "azurerm_service_plan" "plan" {
   name                = "${var.project_name}-${var.environment}-plan"
   location            = var.location
   resource_group_name = azurerm_resource_group.rg.name
   os_type             = "Linux"
-  sku_name            = "Y1"
+  sku_name            = "FC1"
   tags                = local.common_tags
 }
 
 # -----------------------
-# Linux Function App
+# Flex Consumption Function App
 # -----------------------
-resource "azurerm_linux_function_app" "func" {
+resource "azurerm_function_app_flex_consumption" "func" {
   name                = "${var.project_name}-${var.environment}-api"
   location            = var.location
   resource_group_name = azurerm_resource_group.rg.name
   service_plan_id     = azurerm_service_plan.plan.id
 
-  storage_account_name       = azurerm_storage_account.storage.name
-  storage_account_access_key = azurerm_storage_account.storage.primary_access_key
+  storage_container_type      = "blobContainer"
+  storage_container_endpoint  = "${azurerm_storage_account.storage.primary_blob_endpoint}${azurerm_storage_container.func_deployment.name}"
+  storage_authentication_type = "StorageAccountConnectionString"
+  storage_access_key          = azurerm_storage_account.storage.primary_access_key
+
+  runtime_name    = "node"
+  runtime_version = "18"
 
   site_config {
-    application_stack {
-      node_version = "18"
-    }
     cors {
       allowed_origins = [
         "https://skisignal.com",
@@ -110,7 +119,6 @@ resource "azurerm_linux_function_app" "func" {
   }
 
   app_settings = {
-    FUNCTIONS_WORKER_RUNTIME              = "node"
     APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.ai.connection_string
   }
   tags = local.common_tags
